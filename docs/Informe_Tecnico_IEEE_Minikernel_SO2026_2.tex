@@ -1,0 +1,1128 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+% ============================================================================
+% PAQUETES Y CONFIGURACION ESTANDAR IEEE (TWO-COLUMN PAPER FORMAT)
+% ============================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla,es-nodecimaldot,es-noquoting,es-noshorthands]{babel}
+\usepackage{mathptmx} % Tipografia Times New Roman estandar IEEE
+\usepackage[letterpaper,top=0.75in,bottom=1.0in,left=0.625in,right=0.625in,columnsep=0.25in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,babel}
+\usepackage[hidelinks,colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+% Colores corporativos y academicos IEEE
+\definecolor{ieeeBlue}{RGB}{0,64,128}
+\definecolor{kernelBg}{RGB}{235,243,252}
+\definecolor{serverBg}{RGB}{242,249,245}
+\definecolor{ipcBg}{RGB}{254,249,231}
+\definecolor{secBg}{RGB}{253,237,236}
+\definecolor{uiBg}{RGB}{245,245,250}
+\definecolor{borderBlue}{RGB}{41,128,185}
+\definecolor{borderGreen}{RGB}{39,174,96}
+\definecolor{borderOrange}{RGB}{211,84,0}
+\definecolor{borderRed}{RGB}{192,57,43}
+
+% Numeracion de secciones estilo IEEE (I, II, III... y A, B, C...)
+\renewcommand{\thesection}{\Roman{section}}
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\renewcommand{\thesubsubsection}{\arabic{subsubsection}}
+
+\titleformat{\section}
+  {\normalfont\fontsize{10}{12}\bfseries\scshape\centering}
+  {\thesection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{10pt}{5pt}
+
+\titleformat{\subsection}
+  {\normalfont\fontsize{10}{12}\itshape\bfseries}
+  {\thesubsection.}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{8pt}{4pt}
+
+\titleformat{\subsubsection}
+  {\normalfont\fontsize{9.5}{11}\itshape}
+  {\thesubsubsection)}{0.4em}{}
+\titlespacing*{\subsubsection}{0pt}{5pt}{2pt}
+
+\captionsetup[table]{
+  labelfont={bf,sc,footnotesize},
+  textfont={sc,footnotesize},
+  labelsep=newline,
+  justification=centering
+}
+\captionsetup[figure]{
+  labelfont={bf,footnotesize},
+  textfont={footnotesize},
+  labelsep=period
+}
+
+% Encabezado y pie de pagina estilo IEEE Transactions
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\scriptsize UNIVERSIDAD DISTRITAL FRANCISCO JOS\'E DE CALDAS -- SISTEMAS OPERATIVOS (2026-II)}
+\fancyhead[R]{\scriptsize INFORME T\'ECNICO EN NORMA IEEE: ARQUITECTURA MINIKERNEL}
+\fancyfoot[C]{\scriptsize \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Columnas personalizadas para tablas densas
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% Estilos TikZ reutilizables para diagramas de actividad y arquitectura
+\tikzset{
+  startstop/.style={circle, draw=black, fill=black, minimum size=4.5mm, inner sep=0pt},
+  endnode/.style={circle, draw=black, double, fill=black, minimum size=4.5mm, inner sep=0pt},
+  act/.style={rectangle, rounded corners=2pt, draw=borderBlue, fill=kernelBg, text width=3.8cm, minimum height=5.5mm, align=center, font=\scriptsize, inner sep=2pt},
+  ipcact/.style={rectangle, rounded corners=2pt, draw=borderOrange, fill=ipcBg, text width=3.8cm, minimum height=5.5mm, align=center, font=\scriptsize\bfseries, inner sep=2pt},
+  secact/.style={rectangle, rounded corners=2pt, draw=borderRed, fill=secBg, text width=3.8cm, minimum height=5.5mm, align=center, font=\scriptsize, inner sep=2pt},
+  srvact/.style={rectangle, rounded corners=2pt, draw=borderGreen, fill=serverBg, text width=3.8cm, minimum height=5.5mm, align=center, font=\scriptsize, inner sep=2pt},
+  dec/.style={diamond, aspect=2.2, draw=borderOrange, fill=ipcBg, text width=2.5cm, align=center, font=\scriptsize, inner sep=1pt},
+  arrow/.style={-{Stealth[scale=0.8]}, thick, draw=black!80},
+  umlclass/.style={rectangle, draw=ieeeBlue, fill=white, thick, text width=4.8cm, font=\scriptsize, inner sep=3pt, align=left}
+}
+
+\begin{document}
+
+% ============================================================================
+% TITULO Y AUTORES (FORMATO IEEE)
+% ============================================================================
+\twocolumn[
+\begin{@twocolumnfalse}
+\begin{center}
+  {\LARGE\bfseries Dise\~no, Especificaci\'on Formal y Simulaci\'on Interactiva de un Sistema Operativo con Arquitectura Microkernel (Minikernel) Orientado a Paso de Mensajes IPC\par}
+  \vspace{10pt}
+  {\normalsize
+    \textbf{Arquitectura Core \& IPC}$^{1}$,
+    \textbf{Ingenier\'ia de Procesos y Memoria}$^{2}$,
+    \textbf{Ingenier\'ia de Almacenamiento y E/S}$^{3}$,\\
+    \textbf{Oficial\'ia de Seguridad y Auditor\'ia ACL}$^{4}$,
+    \textbf{Integraci\'on Frontend UX y Aseguramiento QA}$^{5}$\\[4pt]
+    \textit{Facultad de Ingenier\'ia, Proyecto Curricular de Ingenier\'ia de Sistemas}\\
+    \textit{Universidad Distrital Francisco Jos\'e de Caldas, Bogot\'a D.C., Colombia (2026-II)}\\
+    \texttt{\{core.ipc, proc.mem, storage.io, sec.acl, qa.ux\}@udistrital.edu.co}
+  }
+\end{center}
+\vspace{6pt}
+
+\begin{quote}
+\small
+\textbf{\textit{Abstract}---This technical paper presents the formal software engineering specification, architectural design, and real-time interactive Web simulation of a pedagogical Operating System built strictly upon a Microkernel (Minikernel) architecture. Unlike monolithic kernels where scheduling, memory management, file systems, device drivers, and access control share a single privileged address space, the proposed Minikernel isolates the privileged ring (\texttt{Ring 0}) to three strictly bounded primitives: (1) the central system clock and basic preemption timer, (2) the asynchronous and synchronous Inter-Process Communication (\texttt{IPCBus}) message router, and (3) low-level hardware interrupt dispatching (\texttt{InterruptController}) with explicit context-switch overhead accounting ($T_{cs}$). Five autonomous user-space servers (\texttt{Ring 3}) execute all high-level operating system policies exclusively through immutable \texttt{IPCMessage} envelopes: Process Management (Round Robin, Preemptive Priority, SJF/SRTF, Counting Semaphores, and Dijkstra's Banker's Algorithm), Physical Memory Management (Fixed and Dynamic Variable Partitioning with First-Fit, Best-Fit, and Worst-Fit allocation plus internal/external fragmentation metrics), Hierarchical File System Management (dual FAT table and POSIX i-node allocation), Peripheral I/O and Networking (FCFS, SSTF, SCAN, and C-SCAN disk arm scheduling, asynchronous DMA channels, and TCP/UDP simulated sockets), and Security/Access Control (Root, Standard, and Guest profiles, dynamic ACL matrices, and FNV-1a cryptographic hash-chained audit logs). Cross-verification proves 100\% consistency across 30 functional requirements, 12 non-functional requirements, 10 formal use cases, 10 UML activity diagrams, the UML class model, and the ES6 modular implementation.}
+
+\vspace{4pt}
+\textbf{\textit{Index Terms}---Microkernel Architecture, Inter-Process Communication (IPC), CPU Scheduling, Banker's Algorithm, Dynamic Memory Partitioning, File Allocation Table (FAT), I-nodes, Disk Arm Scheduling, Direct Memory Access (DMA), Access Control List (ACL).}
+\end{quote}
+\vspace{8pt}
+\hrule
+\vspace{12pt}
+\end{@twocolumnfalse}
+]
+
+% ============================================================================
+% SECCION I: INTRODUCCION Y ARQUITECTURA MICROKERNEL
+% ============================================================================
+\section{Introducci\'on y Fundamentos de la Arquitectura Minikernel}
+
+El dise\~no cl\'asico de sistemas operativos ha estado hist\'oricamente dividido entre n\'ucleos monol\'iticos y arquitecturas basadas en microkernel (tambi\'en denominadas \textit{Minikernel} en entornos acad\'emicos y de alta confiabilidad) \cite{tanenbaum2015, silberschatz2018}. En un sistema monol\'itico, subsistemas complejos como el sistema de archivos, los controladores de dispositivos, el asignador de memoria f\'isica y el validador de permisos se ejecutan dentro del mismo espacio de direcciones en modo privilegiado (\texttt{Ring 0}). En consecuencia, una falla de puntero o corrupci\'on de estado en un controlador de perif\'ericos compromete la totalidad del sistema operativo, provocando un fallo catastr\'ofico (\textit{Kernel Panic}).
+
+En contraste, el presente proyecto implementa rigurosamente el paradigma \textbf{Minikernel} propuesto para el curso de Sistemas Operativos 2026-II de la Universidad Distrital Francisco Jos\'e de Caldas. Bajo esta filosof\'ia arquitect\'onica, el n\'ucleo privilegiado (\texttt{Kernel}) se reduce a su m\'inima expresi\'on funcional (Principio de M\'inimo Privilegio de Liedtke \cite{liedtke1995}), conservando \'unicamente tres responsabilidades en \texttt{Ring 0}:
+\begin{enumerate}[leftmargin=*,nosep]
+  \item \textbf{Sincronizaci\'on de Reloj Maestro (\texttt{SystemClock}):} Generaci\'on determinista de pulsos de reloj (\textit{ticks}), control de frecuencia ($\text{Hz}$) y medici\'on exacta de sobrecarga por cambio de contexto ($T_{cs}$).
+  \item \textbf{Enrutamiento de Paso de Mensajes (\texttt{IPCBus}):} Transporte inmutable, s\'incrono y as\'incrono de sobres \texttt{IPCMessage} entre procesos de usuario y los cinco servidores del sistema sin memoria compartida global.
+  \item \textbf{Despacho de Interrupciones (\texttt{InterruptController}):} Vectorizaci\'on priorizada de interrupciones de hardware (\texttt{IRQ\_TIMER}, \texttt{IRQ\_DISK\_IO}, \texttt{IRQ\_DMA\_DONE}, \texttt{IRQ\_NET\_RX}) y trampas de software (\texttt{TRAP\_SYSCALL}, \texttt{TRAP\_SECURITY\_VIOLATION}).
+\end{enumerate}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.76, transform shape]
+  % Capa UI / Procesos de Usuario
+  \node[rectangle, draw=borderBlue, fill=uiBg, rounded corners=3pt, minimum width=8.2cm, minimum height=0.8cm, font=\scriptsize\bfseries, align=center] (ui) at (0,3.2) {Capa de Usuario y Dashboard Web Interactivo (SPA - Ring 3)\\Consola de Procesos $\mid$ Mapa RAM $\mid$ Explorador VFS $\mid$ Disco/DMA $\mid$ Matriz ACL};
+
+  % 5 Servidores Desacoplados en Espacio de Usuario
+  \node[srvact, text width=1.42cm, minimum height=1.2cm] (s1) at (-3.3, 1.75) {\textbf{Process}\\Manager\\\tiny RR/Prio/SRTF\\Banquero};
+  \node[srvact, text width=1.42cm, minimum height=1.2cm] (s2) at (-1.65, 1.75) {\textbf{Memory}\\Manager\\\tiny Fija/Din\'amica\\First/Best/Worst};
+  \node[srvact, text width=1.42cm, minimum height=1.2cm] (s3) at (0.0, 1.75) {\textbf{File}\\Manager\\\tiny \'Arbol VFS\\FAT e Inodos};
+  \node[srvact, text width=1.42cm, minimum height=1.2cm] (s4) at (1.65, 1.75) {\textbf{Device}\\Driver\\\tiny FCFS/SSTF\\SCAN/DMA};
+  \node[secact, text width=1.42cm, minimum height=1.2cm] (s5) at (3.3, 1.75) {\textbf{Security}\\Controller\\\tiny Root/Std/Guest\\Matriz ACL};
+
+  % Bus IPC
+  \node[rectangle, draw=borderOrange, fill=ipcBg, very thick, minimum width=8.2cm, minimum height=0.75cm, font=\scriptsize\bfseries, align=center] (ipc) at (0, 0.35) {Bus Central de Paso de Mensajes (\texttt{IPCBus} -- \texttt{IPCMessage} Inmutable)};
+
+  % Minikernel Ring 0
+  \node[rectangle, draw=ieeeBlue, fill=kernelBg, very thick, rounded corners=3pt, minimum width=8.2cm, minimum height=1.05cm, font=\scriptsize, align=center] (kernel) at (0, -0.95) {\textbf{MINIKERNEL CORE (\texttt{Ring 0} -- Modo Privilegiado M\'inimo)}\\
+  \texttt{SystemClock} (Ticks + $T_{cs}$) $\;\mid\;$ \texttt{InterruptController} (IRQ Vector) $\;\mid\;$ \texttt{Dispatcher}};
+
+  % Persistencia
+  \node[rectangle, draw=black!60, fill=gray!15, rounded corners=2pt, minimum width=8.2cm, minimum height=0.6cm, font=\scriptsize, align=center] (pers) at (0, -2.05) {Capa de Persistencia Transaccional (\texttt{PersistenceStore}: \texttt{LocalStorage} + \texttt{IndexedDB})};
+
+  % Conexiones
+  \foreach \x in {s1,s2,s3,s4,s5} {
+    \draw[<->, >=Stealth, thick, draw=borderBlue] (ui.south -| \x.north) -- (\x.north);
+    \draw[<->, >=Stealth, thick, draw=borderOrange] (\x.south) -- (ipc.north -| \x.south);
+  }
+  \draw[<->, >=Stealth, very thick, draw=ieeeBlue] (ipc.south) -- (kernel.north);
+  \draw[<->, >=Stealth, thick, draw=black!70] (kernel.south) -- (pers.north);
+\end{tikzpicture}
+\caption{Arquitectura general del Sistema Operativo Minikernel desacoplado mediante el bus de paso de mensajes \texttt{IPCBus}.}
+\label{fig:arquitectura_general}
+\end{figure}
+
+La Fig. \ref{fig:arquitectura_general} ilustra la separaci\'on estricta entre los cinco servidores desacoplados en espacio de usuario (\texttt{Ring 3}) y el n\'ucleo m\'inimo en \texttt{Ring 0}. Ning\'un servidor invoca m\'etodos privados ni muta estructuras internas de otro servidor; toda interacci\'on (por ejemplo, la validaci\'on de permisos ACL antes de abrir un archivo o la asignaci\'on de partici\'on RAM al admitir un proceso nuevo) requiere obligatoriamente el env\'io de un mensaje \texttt{IPCMessage} a trav\'es del \texttt{IPCBus}.
+
+\subsection{Modelo Matem\'atico de Sobrecarga por Cambio de Contexto}
+A diferencia de los simuladores ideales que asumen conmutaci\'on instant\'anea de procesos, el Minikernel modela expl\'icitamente el costo temporal $T_{cs} \ge 1$ ticks consumido en salvar los registros del bloque de control de proceso saliente ($PCB_{out}$) y restaurar el estado del proceso entrante ($PCB_{in}$). Para un intervalo de observaci\'on de $T_{\text{total}}$ ticks con $N_{cs}$ conmutaciones de contexto y $T_{\text{idle}}$ ticks de inactividad, la utilizaci\'on efectiva de CPU ($\eta_{\text{CPU}}$) y la sobrecarga del sistema ($\Omega_{\text{cs}}$) se definen mediante las ecuaciones (\ref{eq:cpu_eff}) y (\ref{eq:cpu_ovh}):
+
+\begin{equation}
+  \eta_{\text{CPU}} = \frac{T_{\text{total}} - \left(N_{cs} \cdot T_{cs} + T_{\text{idle}}\right)}{T_{\text{total}}} \times 100\%
+  \label{eq:cpu_eff}
+\end{equation}
+
+\begin{equation}
+  \Omega_{\text{cs}} = \frac{N_{cs} \cdot T_{cs}}{T_{\text{total}}} \times 100\%
+  \label{eq:cpu_ovh}
+\end{equation}
+
+% ============================================================================
+% SECCION II: MATRIZ DE REQUERIMIENTOS FUNCIONALES Y NO FUNCIONALES
+% ============================================================================
+\section{Ingenier\'ia de Requerimientos del Sistema Minikernel}
+
+Siguiendo los lineamientos de la Secci\'on 3.1 de la gu\'ia acad\'emica del proyecto y el est\'andar IEEE 830 / ISO/IEC/IEEE 29148 \cite{ieee29148}, cada requerimiento funcional (\texttt{RF-01} a \texttt{RF-30}) y no funcional (\texttt{RNF-01} a \texttt{RNF-12}) se especifica detallando sus \textbf{Entradas}, \textbf{Procesamiento}, \textbf{Salidas} y las \textbf{Restricciones de la Arquitectura Minikernel}. Las Tablas \ref{tab:rf_parte1}, \ref{tab:rf_parte2} y \ref{tab:rnf} consolidan la totalidad de la especificaci\'on.
+
+\begin{table*}[!t]
+\caption{Matriz de Requerimientos Funcionales del Sistema Operativo Minikernel (Parte I: RF-01 a RF-15)}
+\label{tab:rf_parte1}
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.18}
+\begin{tabularx}{\textwidth}{C{0.9cm} L{2.2cm} L{2.8cm} Y L{2.8cm} L{3.3cm}}
+\toprule
+\textbf{ID} & \textbf{M\'odulo / Nombre} & \textbf{Entrada (Inputs)} & \textbf{Procesamiento (Processing)} & \textbf{Salida (Outputs)} & \textbf{Restricciones Minikernel} \\
+\midrule
+\textbf{RF-01} & Core: Reloj Maestro del Sistema & Frecuencia $f \in [1, 20]$ Hz o comando \texttt{stepTick()}. & Incrementa el contador monot\'onico de ticks, emite \texttt{IRQ\_TIMER} al \texttt{InterruptController} y notifica al \texttt{ProcessManager} v\'ia IPC. & Pulso \texttt{CLOCK\_TICK} global y actualizaci\'on de m\'etricas de CPU. & El reloj reside en \texttt{Ring 0} pero no ejecuta l\'ogica de planificaci\'on; delega por IPC. \\
+\textbf{RF-02} & Core: Enrutador Central IPC & Objeto \texttt{IPCMessage} (\texttt{sender}, \texttt{receiver}, \texttt{type}, \texttt{action}, \texttt{payload}). & Valida esquema del sobre, congela el objeto (\texttt{Object.freeze}), asigna \texttt{msgId} y despacha al buz\'on del servidor destino. & Respuesta \texttt{IPCMessage} (\texttt{RESPONSE}/\texttt{ERROR}) y registro en traza IPC. & Prohibido el acceso directo a referencias de memoria entre servidores; paso por valor. \\
+\textbf{RF-03} & Core: Controlador de Interrupciones & Se\~nal \texttt{InterruptRequest} (\texttt{irqNumber}, \texttt{source}, \texttt{priority}). & Encola la IRQ en cola de prioridad ($0$ m\'axima a $5$ m\'inima) y la atiende al inicio del siguiente ciclo de reloj. & Ejecuci\'on de rutina ISR registrada y mensaje IPC al servidor correspondiente. & Las ISR en \texttt{Ring 0} son m\'inimas (\textit{top-half}) y delegan el procesamiento al servidor (\textit{bottom-half}). \\
+\textbf{RF-04} & Core: Cambio de Contexto ($T_{cs}$) & \texttt{PCB} saliente, \texttt{PCB} entrante y costo $T_{cs} \in [1,3]$ ticks. & Salva \texttt{PC}, \texttt{SP}, \texttt{ACC} y \texttt{PSW} del proceso saliente, descuenta $T_{cs}$ ticks de sobrecarga y carga el contexto entrante. & M\'etrica acumulada \texttt{contextSwitchTicks} y nuevo proceso activo. & Durante los $T_{cs}$ ticks de conmutaci\'on ning\'un proceso de usuario ejecuta instrucciones. \\
+\textbf{RF-05} & Core: Trampa de Llamada al Sistema & \texttt{TRAP\_SYSCALL} invocada por proceso o interfaz web. & Cambia modo de ejecuci\'on de usuario a kernel, empaqueta la petici\'on en \texttt{IPCMessage} y la enruta al servidor. & Retorno seguro a \texttt{Ring 3} con el c\'odigo de resultado de la syscall. & Toda operaci\'on del dashboard web debe ingresar mediante \texttt{sysCall()} y nunca por llamada directa. \\
+\textbf{RF-06} & Procesos: Creaci\'on y Ciclo de Vida PCB & Nombre, $T_{\text{burst}}$, prioridad ($1..10$), RAM (KB), vector $Max[]$ y \texttt{ownerUid}. & Solicita autenticaci\'on/ACL a Seguridad y partici\'on RAM a \texttt{MemoryManager} v\'ia IPC; instancia \texttt{PCB} y transiciona \texttt{NEW} $\rightarrow$ \texttt{READY}. & \texttt{PCB} admitido en cola de listos o en espera de memoria. & \texttt{ProcessManager} no modifica tablas de RAM directamente; requiere \texttt{MEM\_ALLOC} por IPC. \\
+\textbf{RF-07} & Procesos: Planificaci\'on Round Robin & Cola de listos \texttt{readyQueue} y \texttt{quantum} $Q \in [1,10]$ ticks. & Ejecuta el proceso en cabeza de cola por hasta $Q$ ticks; si expira el quantum sin terminar, desaloja y reencola al final. & Transici\'on \texttt{RUNNING} $\rightarrow$ \texttt{READY} e invocaci\'on de cambio de contexto. & El desalojo por fin de quantum es disparado por el pulso \texttt{IRQ\_TIMER} del Minikernel. \\
+\textbf{RF-08} & Procesos: Planificaci\'on por Prioridades & Cola de listos ordenada por prioridad ($1$ m\'as alta) y modo expropiativo. & Compara la prioridad del proceso en llegada con el proceso en \texttt{RUNNING}; si $P_{\text{new}} < P_{\text{curr}}$, expropia la CPU inmediatamente. & Desalojo preventivo y actualizaci\'on de tiempos de espera/retorno. & En empate de prioridad aplica desempate estricto FCFS seg\'un \texttt{arrivalTick}. \\
+\textbf{RF-09} & Procesos: Planificaci\'on SJF / SRTF & R\'afagas restantes \texttt{remainingBurst} de los procesos en \texttt{READY}. & Selecciona el proceso con menor tiempo restante ($\min R_i$); si ingresa uno con $R_{\text{new}} < R_{\text{curr}}$, expropia la CPU (SRTF). & Minimizaci\'on del tiempo medio de espera ($WT$) y retorno ($TAT$). & Requiere estimaci\'on declarada de r\'afaga total de CPU al momento de crear el \texttt{PCB}. \\
+\textbf{RF-10} & Procesos: Sem\'aforos de Sincronizaci\'on & Identificador de sem\'aforo \texttt{semId}, contador inicial $S_0$ y operaci\'on $P(\text{wait})$ o $V(\text{signal})$. & $P$: decrementa $S$; si $S < 0$, bloquea el \texttt{PCB} (\texttt{RUNNING} $\rightarrow$ \texttt{BLOCKED}). $V$: incrementa $S$; si $S \le 0$, despierta un proceso bloqueado. & Estado de colas de bloqueo por sem\'aforo y despertar determinista FIFO. & Las operaciones $P()$ y $V()$ son at\'omicas dentro del buz\'on IPC del \texttt{ProcessManager}. \\
+\textbf{RF-11} & Procesos: Algoritmo del Banquero & Matrices \texttt{Max}, \texttt{Allocation}, \texttt{Need}, vector \texttt{Available} y solicitud $Req_i[]$. & Verifica $Req_i \le Need_i$ y $Req_i \le Available$; simula asignaci\'on y ejecuta test de seguridad buscando secuencia $\langle P_{s_1}, \dots, P_{s_n} \rangle$. & Estado \texttt{SAFE} con secuencia segura o rechazo preventivo (\texttt{UNSAFE}). & Si el estado simulado es inseguro, se revierte la asignaci\'on provisoria y se bloquea al solicitante. \\
+\textbf{RF-12} & Memoria: Particionamiento Est\'atico Fijo & Arreglo de bloques fijos (p. ej. $[64, 128, 256, 512]$ KB) y solicitud $S_{\text{req}}$ KB. & Localiza la partici\'on fija libre con capacidad $C_k \ge S_{\text{req}}$, asigna el \texttt{pid} y calcula fragmentaci\'on interna $F_{\text{int}} = C_k - S_{\text{req}}$. & Bloque asignado con direcci\'on base, l\'imite y fragmentaci\'on interna. & Cada partici\'on fija aloja a lo sumo un proceso activo; el espacio sobrante no es reutilizable. \\
+\textbf{RF-13} & Memoria: Particionamiento Din\'amico & Solicitud $S_{\text{req}}$ KB y pol\'itica (\texttt{FIRST\_FIT}, \texttt{BEST\_FIT}, \texttt{WORST\_FIT}). & Eval\'ua huecos libres ($\ge S_{\text{req}}$): primer hueco (\textit{First-Fit}), menor residuo (\textit{Best-Fit}) o mayor residuo (\textit{Worst-Fit}); divide el bloque (\textit{split}). & Nueva partici\'on exacta de tama\~no $S_{\text{req}}$ y hueco libre residual. & Al liberar memoria (\texttt{MEM\_FREE}), fusiona autom\'aticamente huecos libres adyacentes (\textit{coalescing}). \\
+\textbf{RF-14} & Memoria: Compactaci\'on y Fragmentaci\'on & Mapa de bloques de RAM física (1024 KB). & Calcula fragmentaci\'on interna total ($\sum F_{\text{int}}$), fragmentaci\'on externa ($\sum \text{huecos libres}$) y permite compactaci\'on contigua. & Reporte \texttt{FragmentationReport} y reubicaci\'on de registros base. & La compactaci\'on actualiza los punteros \texttt{memoryBlockId} notificando v\'ia IPC. \\
+\textbf{RF-15} & Archivos: Jerarqu\'ia de Directorios VFS & Ruta absoluta POSIX (\texttt{/home/guest}), nombre, tipo (\texttt{FILE}/\texttt{DIR}) y \texttt{uid}. & Recorre el \'arbol jer\'arquico desde \texttt{/}, verifica existencia de padres y crea/elimina/lista nodos \texttt{FSNode}. & \'Arbol VFS actualizado y metadatos del nodo (\texttt{inodeId}, tama\~no, bloques). & Antes de mutar el VFS, \texttt{FileManager} consulta obligatoriamente al \texttt{SecurityController} por IPC. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{table*}[!t]
+\caption{Matriz de Requerimientos Funcionales del Sistema Operativo Minikernel (Parte II: RF-16 a RF-30)}
+\label{tab:rf_parte2}
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.18}
+\begin{tabularx}{\textwidth}{C{0.9cm} L{2.2cm} L{2.8cm} Y L{2.8cm} L{3.3cm}}
+\toprule
+\textbf{ID} & \textbf{M\'odulo / Nombre} & \textbf{Entrada (Inputs)} & \textbf{Procesamiento (Processing)} & \textbf{Salida (Outputs)} & \textbf{Restricciones Minikernel} \\
+\midrule
+\textbf{RF-16} & Archivos: Asignaci\'on por Tabla FAT & Tama\~no de archivo en KB, tama\~no de bloque (4 KB) y tabla FAT (64 bloques). & Calcula $N_b = \lceil \text{size}/4 \rceil$, localiza bloques libres y construye lista enlazada $FAT[b_k] = b_{k+1}$ con fin de cadena \texttt{EOF} ($-1$). & Cadena de bloques FAT asignada al archivo y mapa de bloques actualizado. & La tabla FAT reside exclusivamente en el espacio de datos privado del servidor \texttt{FileManager}. \\
+\textbf{RF-17} & Archivos: Asignaci\'on por I-nodos & Tama\~no de archivo y estructura de i-nodo con 4 punteros directos y 1 indirecto simple. & Asigna los primeros 4 bloques en \texttt{directBlocks[]} y, si $N_b > 4$, reserva un bloque \'indice para \texttt{singleIndirectBlocks[]}. & Estructura \texttt{inodeTable} poblada con punteros directos e indirectos. & Permite conmutar o formatear el esquema del volumen entre \texttt{FAT} e \texttt{INODES} en caliente. \\
+\textbf{RF-18} & Archivos: Operaciones CRUD Completas & Operaci\'on (\texttt{CREATE}, \texttt{READ}, \texttt{WRITE}, \texttt{DELETE}), ruta, contenido y \texttt{uid}. & Ejecuta lectura/escritura de bloques, recalcula tama\~no y solicita E/S de cilindro f\'isico al \texttt{DeviceDriver} v\'ia IPC. & Contenido le\'ido o confirmaci\'on de escritura/liberaci\'on de bloques. & La lectura o escritura f\'isica de bloques dispara una petici\'on IPC \texttt{IO\_SUBMIT\_DISK}. \\
+\textbf{RF-19} & E/S: Planificaci\'on de Disco FCFS y SSTF & Posici\'on actual del cabezal $C_0 \in [0,199]$ y cola de cilindros $Q_c$. & \textbf{FCFS}: atiende en orden estricto de llegada. \textbf{SSTF}: selecciona en cada paso el cilindro $c_k$ que minimiza $|c_k - C_{\text{actual}}|$. & Secuencia ordenada de barrido y distancia total $\sum |\Delta c|$ en cilindros. & El movimiento del brazo se acopla al canal DMA antes de notificar finalizaci\'on al proceso. \\
+\textbf{RF-20} & E/S: Planificaci\'on SCAN y C-SCAN & Cabezal $C_0$, direcci\'on inicial (\texttt{UP}/\texttt{DOWN}), l\'imite $C_{\max}=199$ y cola $Q_c$. & \textbf{SCAN}: barre hasta el extremo y rebota invirtiendo direcci\'on. \textbf{C-SCAN}: barre en un sentido, salta al inicio ($0$) y contin\'ua. & Curva de recorrido del cabezal $(t, \text{cilindro})$ y total de cilindros recorridos. & Previene la inanici\'on (\textit{starvation}) de cilindros extremos presente en el algoritmo SSTF. \\
+\textbf{RF-21} & E/S: Transferencia As\'incrona por DMA & Cilindro destino, tama\~no de buffer y \texttt{pid} solicitante. & Configura registros del canal \texttt{DMAController} (\texttt{IDLE} $\rightarrow$ \texttt{BUSY} $\rightarrow$ \texttt{DONE}) transfiriendo a RAM sin ocupar la CPU principal. & Disparo de interrupci\'on \texttt{IRQ\_DMA\_DONE} al finalizar la transferencia. & La CPU contin\'ua ejecutando otros procesos \texttt{READY} mientras el canal DMA transfiere bloques. \\
+\textbf{RF-22} & E/S: Sockets de Red TCP/UDP Simulados & Protocolo (\texttt{TCP}/\texttt{UDP}), puerto local/remoto y payload de paquete. & Crea descriptor \texttt{SimulatedSocket}, encola datagramas/segmentos en buffers \texttt{txBuffer}/\texttt{rxBuffer} y emite \texttt{IRQ\_NET\_RX}. & Estad\'isticas de paquetes transmitidos/recibidos y despertar de procesos lectores. & El tr\'afico de red simulado se transporta mediante mensajes IPC \texttt{NET\_SEND}/\texttt{NET\_OPEN}. \\
+\textbf{RF-23} & Seguridad: Gesti\'on de Perfiles de Usuario & Credenciales (\texttt{username}: \texttt{root}, \texttt{standard}, \texttt{guest}) y hash de sesi\'on. & Autentica la identidad del usuario activo, asigna nivel de privilegio (\texttt{RING\_0\_ADMIN}, \texttt{RING\_3\_USER}, \texttt{RING\_3\_GUEST}). & Sesi\'on activa verificada y token de contexto de seguridad. & \texttt{root} ($uid=0$) posee capacidades administrativas; \texttt{guest} ($uid=2000$) est\'a restringido a lectura. \\
+\textbf{RF-24} & Seguridad: Matriz de Control ACL & Sujeto (\texttt{uid}/\texttt{role}), Objeto (\texttt{resourceId}) y operaci\'on (\texttt{R}, \texttt{W}, \texttt{X}, \texttt{DELETE}). & Eval\'ua la matriz $M[\text{Sujeto}, \text{Objeto}]$ verificando si el bit del permiso requerido est\'a habilitado para el perfil o propietario. & Decisi\'on booleana \texttt{GRANTED} o \texttt{DENIED} devuelta por IPC. & Ning\'un servidor de archivos o procesos puede omitir la consulta previa \texttt{SEC\_CHECK\_ACL}. \\
+\textbf{RF-25} & Seguridad: Auditor\'ia Criptogr\'afica & Evento de seguridad (\texttt{tick}, \texttt{uid}, \texttt{resourceId}, \texttt{op}, \texttt{decision}). & Calcula firma encadenada FNV-1a de 32 bits $H_n = \text{FNV1a}(H_{n-1} \parallel \text{evento})$ y congela el registro (\texttt{Object.freeze}). & Bit\'acora inmutable \texttt{SecurityAuditLog} verificable contra adulteraci\'on. & Si un acceso es rechazado (\texttt{DENIED}), eleva autom\'aticamente \texttt{TRAP\_SECURITY\_VIOLATION}. \\
+\textbf{RF-26} & Persistencia: Instant\'aneas LocalStorage & Estado serializado de los 5 servidores y del reloj del Minikernel. & Empaqueta la configuraci\'on, tablas PCB/RAM/VFS/ACL en JSON bajo la clave \texttt{minikernel\_so\_2026\_2\_snapshot\_v1}. & Guardado y restauraci\'on instant\'anea del estado completo del SO. & Mantiene integridad referencial entre \texttt{PCB.pid}, \texttt{MemoryPartition} e \texttt{inodeTable}. \\
+\textbf{RF-27} & Persistencia: Almac\'en IndexedDB & Colecciones relacionales (\texttt{processes}, \texttt{memory\_blocks}, \texttt{fs\_nodes}, \texttt{acl\_entries}, \texttt{audit\_logs}). & Ejecuta transacciones as\'incronas en la base \texttt{MinikernelDB\_2026\_2} persistiendo instant\'aneas hist\'oricas e \'indices. & Persistencia durable en navegador web con soporte de exportaci\'on JSON. & Permite recuperar el estado exacto del sistema tras recargar la aplicaci\'on web. \\
+\textbf{RF-28} & UI/UX: Dashboard SPA en Tiempo Real & Eventos del bus IPC y pulsos del reloj del Minikernel. & Renderiza en tiempo real las 5 vistas modulares, diagrama de Gantt de CPU, bloques de RAM, \'arbol VFS y curva de disco. & Interfaz interactiva sin recarga de p\'agina con telemetr\'ia en vivo. & Los controles de la UI emiten exclusivamente llamadas al sistema \texttt{kernel.sysCall()}. \\
+\textbf{RF-29} & UI/UX: Inspector del Bus IPC en Vivo & Flujo de mensajes \texttt{IPCMessage} e interrupciones \texttt{InterruptRequest}. & Muestra en consola acoplada cada mensaje (\texttt{msgId}, \texttt{sender} $\rightarrow$ \texttt{receiver}, \texttt{action}, \texttt{tick}) con c\'odigo de color. & Trazabilidad visual inmediata del paso de mensajes del Microkernel. & Evidencia visualmente ante el evaluador que no existen llamadas directas entre m\'odulos. \\
+\textbf{RF-30} & QA: Suite Automatizada Anti-Fallas & Estado interno de los 5 servidores y 101 selectores del DOM. & Verifica invariantes de arquitectura, consistencia de memoria, prevenci\'on de deadlocks y correspondencia 1:1 con diagramas UML. & Reporte de verificaci\'on automatizada con \textbf{Cero Fallas de Kernel}. & Ejecutable tanto en entorno Node.js headless como en el navegador web. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{table*}[!t]
+\caption{Matriz de Requerimientos No Funcionales (RNF-01 a RNF-12) y Restricciones Arquitect\'onicas}
+\label{tab:rnf}
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.18}
+\begin{tabularx}{\textwidth}{C{1.0cm} L{2.6cm} L{2.8cm} Y L{3.6cm}}
+\toprule
+\textbf{ID} & \textbf{Categor\'ia / Atributo} & \textbf{M\'etrica / Umbral Objetivo} & \textbf{Especificaci\'on T\'ecnica de Cumplimiento} & \textbf{Restricci\'on de Arquitectura Minikernel} \\
+\midrule
+\textbf{RNF-01} & Aislamiento Modular Estricto & $0$ llamadas directas inter-servidor & Los 5 servidores residen en m\'odulos ES6 independientes y s\'olo exponen el manejador \texttt{handleIPCMessage(msg)}. & Prohibici\'on absoluta de importar instancias de un servidor dentro de otro servidor. \\
+\textbf{RNF-02} & Inmutabilidad de Mensajes IPC & $100\%$ de sobres congelados & Todo \texttt{IPCMessage} e \texttt{InterruptRequest} aplica \texttt{Object.freeze()} recursivo sobre su encabezado y \texttt{payload}. & Garantiza sem\'antica de paso por valor sin efectos colaterales por referencias compartidas. \\
+\textbf{RNF-03} & Latencia de Renderizado UI & $< 16.6$ ms por tick ($60$ FPS) & Actualizaci\'on selectiva del DOM y renderizado vectorizado ligero para el Gantt, mapa de RAM y curva de disco. & La capa gr\'afica no bloquea el hilo del reloj del Minikernel. \\
+\textbf{RNF-04} & Determinismo Algor\'itmico & $100\%$ reproducible & Dadas las mismas semillas de procesos, r\'afagas y cilindros, los algoritmos RR/SRTF/Banquero/SSTF producen id\'entica salida. & Facilita la auditor\'ia acad\'emica y la repetibilidad de pruebas QA. \\
+\textbf{RNF-05} & Integridad Criptogr\'afica de Logs & Cadena hash FNV-1a de 32 bits & Cada entrada \texttt{SecurityAuditLog} incorpora el hash del registro previo ($H_{n-1}$), detectando cualquier alteraci\'on. & El m\'etodo \texttt{verifyAuditIntegrity()} valida toda la cadena en $O(n)$. \\
+\textbf{RNF-06} & Persistencia H\'ibrida Tolerante a Fallos & Recuperaci\'on $< 150$ ms & Respaldo dual sincronizado en \texttt{LocalStorage} (s\'incrono) e \texttt{IndexedDB} (transaccional as\'incrono). & Degradaci\'on elegante en entornos sin soporte de \texttt{IndexedDB}. \\
+\textbf{RNF-07} & Portabilidad Est\'andar Web & $0$ dependencias externas pesadas & Implementado en JavaScript ES2022 puro, HTML5 sem\'antico y CSS3 nativo sin frameworks propietarios. & Ejecutable directamente en cualquier navegador moderno y verificable en Node.js. \\
+\textbf{RNF-08} & Exactitud Matem\'atica de Fragmentaci\'on & Error $= 0$ KB ($\sum \text{bloques} = 1024$ KB) & La suma de bloques asignados, fragmentaci\'on interna y huecos libres iguala invariablemente los $1024$ KB de RAM f\'isica. & Verificado por invariante de conservaci\'on de memoria en cada ciclo de reloj. \\
+\textbf{RNF-09} & Prevenci\'on Garantizada de Interbloqueo & $0$ estados inseguros admitidos & El Algoritmo del Banquero rechaza preventivamente toda petici\'on que deje al sistema sin secuencia segura de finalizaci\'on. & Complejidad temporal acotada en $O(m \cdot n^2)$ para $n$ procesos y $m$ recursos. \\
+\textbf{RNF-10} & Accesibilidad y Ergonom\'ia Visual & Contraste WCAG AA ($\ge 4.5:1$) & Paleta de alto contraste, codificaci\'on sem\'antica de estados y soporte completo de navegaci\'on por pesta\~nas. & Dise\~no adaptable (\textit{responsive}) para proyectores de aula y monitores de laboratorio. \\
+\textbf{RNF-11} & Trazabilidad Documental IEEE & $100\%$ de cobertura RF $\leftrightarrow$ CU $\leftrightarrow$ C\'odigo & Cada requerimiento se vincula inequ\'ivocamente con su caso de uso, diagrama de actividad UML, clase y archivo fuente. & Cumplimiento estricto del formato de art\'iculo t\'ecnico a dos columnas en Norma IEEE. \\
+\textbf{RNF-12} & Tolerancia a Excepciones de Usuario & $0$ ca\'idas no controladas (\textit{Zero Panic}) & Entradas inv\'alidas (memoria insuficiente, rutas inexistentes, violaciones ACL) retornan sobres \texttt{IPCMessage(ERROR)}. & El Minikernel captura toda excepci\'on y preserva la estabilidad del reloj central. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+% ============================================================================
+% SECCION III: ESPECIFICACION DE LOS 10 CASOS DE USO Y DIAGRAMAS DE ACTIVIDAD
+% ============================================================================
+\section{Especificaci\'on Formal de Casos de Uso y Diagramas de Actividad UML}
+
+De conformidad con las Secciones 3.2 y 3.3 de la gu\'ia del proyecto, se especifican formalmente \textbf{diez (10) Casos de Uso} (\texttt{CU-01} a \texttt{CU-10}) que cubren exhaustivamente la interacci\'on entre los actores y los cinco m\'odulos del sistema bajo la arquitectura Minikernel. Cada especificaci\'on est\'a acompa\~nada de su respectivo \textbf{Diagrama de Actividad UML} (Figs. \ref{fig:act_cu01} a \ref{fig:act_cu10}), modelando expl\'icitamente las bifurcaciones de decisi\'on y el paso de mensajes IPC entre servidores.
+
+\subsection{CU-01: Creaci\'on, Admisi\'on de Proceso y Despacho por Cambio de Contexto}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-01} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-01:} Creaci\'on, Admisi\'on de Proceso (\texttt{PCB}) y Despacho con Cambio de Contexto ($T_{cs}$). \\
+\textbf{Actores} & Usuario Operador (\texttt{Root}/\texttt{Standard}), \texttt{Kernel}, \texttt{SecurityController}, \texttt{ProcessManager}, \texttt{MemoryManager}. \\
+\textbf{Precondiciones} & Sesi\'on de usuario activa; \texttt{MemoryManager} inicializado con $1024$ KB de RAM f\'isica. \\
+\textbf{Flujo Normal} & 1. El actor solicita crear un proceso indicando nombre, r\'afaga, prioridad y memoria requerida ($S_{\text{req}}$ KB).\newline
+2. La UI invoca \texttt{kernel.sysCall(PROCESS\_SERVER, PROC\_CREATE)}.\newline
+3. \texttt{ProcessManager} env\'ia \texttt{IPCMessage(SEC\_CHECK\_ACL)} al \texttt{SecurityController} para validar permiso \texttt{X} sobre \texttt{sys:process\_table}.\newline
+4. Con permiso concedido, \texttt{ProcessManager} solicita asignaci\'on de RAM enviando \texttt{IPCMessage(MEM\_ALLOC)} al \texttt{MemoryManager}.\newline
+5. \texttt{MemoryManager} asigna el bloque, retorna \texttt{blockId}, \texttt{baseAddress} y \texttt{limitAddress}.\newline
+6. \texttt{ProcessManager} instancia el \texttt{PCB}, transiciona \texttt{NEW} $\rightarrow$ \texttt{READY} y el \texttt{Kernel} ejecuta el cambio de contexto descontando $T_{cs}$ ticks. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Violaci\'on ACL):} Si el perfil es \texttt{Guest}, \texttt{SecurityController} retorna \texttt{DENIED}, registra violaci\'on y aborta la creaci\'on.\newline
+\textbf{A2 (Sin Memoria Libre):} Si \texttt{MemoryManager} no halla partici\'on $\ge S_{\text{req}}$, el \texttt{PCB} permanece en estado \texttt{NEW} en cola de admisi\'on. \\
+\textbf{Postcondiciones} & \texttt{PCB} registrado en tabla de procesos con bloque de RAM vinculado y contexto de registros inicializado. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[act, below=of start] (step1) {Actor solicita crear proceso (\texttt{name}, \texttt{burst}, \texttt{memReq})};
+  \node[ipcact, below=of step1] (ipc1) {IPC: \texttt{SYS\_CALL(PROC\_CREATE)} $\rightarrow$ \texttt{ProcessManager}};
+  \node[secact, below=of ipc1] (sec1) {IPC: \texttt{SEC\_CHECK\_ACL(sys:process\_table, X)}};
+  \node[dec, below=of sec1] (dec1) {¿Permiso ACL concedido?};
+  \node[secact, right=6mm of dec1, text width=2.4cm] (err1) {Registra \texttt{DENIED} en AuditLog y aborta};
+  \node[ipcact, below=of dec1] (ipc2) {IPC: \texttt{MEM\_ALLOC(pid, memReq)} $\rightarrow$ \texttt{MemoryManager}};
+  \node[dec, below=of ipc2] (dec2) {¿Bloque RAM disponible?};
+  \node[srvact, right=6mm of dec2, text width=2.4cm] (waitm) {\texttt{PCB} queda en cola \texttt{NEW} (Espera RAM)};
+  \node[srvact, below=of dec2] (ready) {Asigna \texttt{base/limit}, transiciona \texttt{NEW} $\rightarrow$ \texttt{READY}};
+  \node[act, below=of ready] (cs) {\texttt{Kernel} ejecuta Cambio de Contexto ($T_{cs}$ ticks) $\rightarrow$ \texttt{RUNNING}};
+  \node[endnode, below=of cs] (end) {};
+
+  \draw[arrow] (start) -- (step1);
+  \draw[arrow] (step1) -- (ipc1);
+  \draw[arrow] (ipc1) -- (sec1);
+  \draw[arrow] (sec1) -- (dec1);
+  \draw[arrow] (dec1) -- node[above, font=\tiny]{No} (err1);
+  \draw[arrow] (dec1) -- node[left, font=\tiny]{S\'i} (ipc2);
+  \draw[arrow] (ipc2) -- (dec2);
+  \draw[arrow] (dec2) -- node[above, font=\tiny]{No} (waitm);
+  \draw[arrow] (dec2) -- node[left, font=\tiny]{S\'i} (ready);
+  \draw[arrow] (ready) -- (cs);
+  \draw[arrow] (cs) -- (end);
+  \draw[arrow] (err1.south) |- (end.east);
+  \draw[arrow] (waitm.south) |- (end.east);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-01 (Admisi\'on de Proceso y Cambio de Contexto).}
+\label{fig:act_cu01}
+\end{figure}
+
+\subsection{CU-02: Planificaci\'on Expropiativa de CPU (RR, Prioridades, SJF/SRTF)}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-02} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-02:} Planificaci\'on Expropiativa de CPU en Tiempo Real (\texttt{RR}, \texttt{PRIORITY\_PREEMPTIVE}, \texttt{SRTF}). \\
+\textbf{Actores} & \texttt{SystemClock}, \texttt{Kernel}, \texttt{ProcessManager}, \texttt{MemoryManager}. \\
+\textbf{Precondiciones} & Al menos un proceso en estado \texttt{READY} o \texttt{RUNNING}; algoritmo y quantum configurados. \\
+\textbf{Flujo Normal} & 1. \texttt{SystemClock} avanza un tick y emite \texttt{IRQ\_TIMER} al \texttt{Kernel}.\newline
+2. \texttt{Kernel} notifica a \texttt{ProcessManager} mediante \texttt{IPCMessage(PROC\_TICK)}.\newline
+3. \texttt{ProcessManager} eval\'ua si existe sobrecarga activa de cambio de contexto ($T_{cs} > 0$); si no, decrementa \texttt{remainingBurst} del proceso en \texttt{RUNNING} e incrementa \texttt{waitingTime} de los procesos en \texttt{READY}.\newline
+4. Eval\'ua condici\'on de finalizaci\'on ($\text{remainingBurst} = 0$) o desalojo por quantum/prioridad/SRTF.\newline
+5. Si el proceso termina, env\'ia \texttt{IPCMessage(MEM\_FREE)} a \texttt{MemoryManager} y pasa a \texttt{TERMINATED}. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Expiraci\'on de Quantum en RR):} Si $\text{quantumUsed} \ge Q$, el proceso vuelve a \texttt{READY} y se conmuta al siguiente.\newline
+\textbf{A2 (Expropiaci\'on por Prioridad o SRTF):} Si en \texttt{READY} hay un proceso con mayor prioridad o menor r\'afaga restante, se desaloja el actual. \\
+\textbf{Postcondiciones} & Diagrama de Gantt y m\'etricas medias de espera ($WT$) y retorno ($TAT$) actualizadas en tiempo real. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[act, below=of start] (tick) {\texttt{SystemClock} emite \texttt{IRQ\_TIMER} al \texttt{Kernel}};
+  \node[ipcact, below=of tick] (ipc1) {IPC: \texttt{PROC\_TICK} $\rightarrow$ \texttt{ProcessManager}};
+  \node[srvact, below=of ipc1] (exec) {Ejecuta 1 tick de CPU (\texttt{remainingBurst--}, \texttt{PC += 4})};
+  \node[dec, below=of exec] (fin) {¿\texttt{remainingBurst == 0}?};
+  \node[ipcact, right=5mm of fin, text width=2.5cm] (free) {Estado \texttt{TERMINATED} + IPC \texttt{MEM\_FREE}};
+  \node[dec, below=of fin] (preempt) {¿Expira Quantum $Q$ o expropia Prio/SRTF?};
+  \node[srvact, right=5mm of preempt, text width=2.5cm] (keep) {Contin\'ua el mismo proceso en \texttt{RUNNING}};
+  \node[srvact, below=of preempt] (sw) {Transiciona \texttt{RUNNING} $\rightarrow$ \texttt{READY} y selecciona siguiente PCB};
+  \node[act, below=of sw] (cs) {Aplica penalizaci\'on de Cambio de Contexto ($T_{cs}$ ticks)};
+  \node[endnode, below=of cs] (end) {};
+
+  \draw[arrow] (start) -- (tick);
+  \draw[arrow] (tick) -- (ipc1);
+  \draw[arrow] (ipc1) -- (exec);
+  \draw[arrow] (exec) -- (fin);
+  \draw[arrow] (fin) -- node[above, font=\tiny]{S\'i} (free);
+  \draw[arrow] (fin) -- node[left, font=\tiny]{No} (preempt);
+  \draw[arrow] (preempt) -- node[above, font=\tiny]{No} (keep);
+  \draw[arrow] (preempt) -- node[left, font=\tiny]{S\'i} (sw);
+  \draw[arrow] (sw) -- (cs);
+  \draw[arrow] (cs) -- (end);
+  \draw[arrow] (free.south) |- (sw.east);
+  \draw[arrow] (keep.south) |- (end.east);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-02 (Planificaci\'on Expropiativa de CPU).}
+\label{fig:act_cu02}
+\end{figure}
+
+\subsection{CU-03: Sincronizaci\'on por Sem\'aforos y Prevenci\'on de Deadlocks (Banquero)}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-03} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-03:} Sincronizaci\'on mediante Sem\'aforos ($P/V$) y Prevenci\'on de Interbloqueos con Algoritmo del Banquero. \\
+\textbf{Actores} & Usuario Operador / Proceso Activo, \texttt{Kernel}, \texttt{ProcessManager}. \\
+\textbf{Precondiciones} & Procesos activos con matrices \texttt{Max}, \texttt{Allocation}, \texttt{Need} y vector \texttt{Available} definidos. \\
+\textbf{Flujo Normal} & 1. Un proceso solicita recursos adicionales $Req_i = [r_A, r_B, r_C]$ o invoca un sem\'aforo $P(\text{semId})$ v\'ia syscall IPC.\newline
+2. \texttt{ProcessManager} valida $Req_i \le Need_i$ y $Req_i \le Available$.\newline
+3. Simula provisoriamente la asignaci\'on: $Available' = Available - Req_i$, $Allocation'_i = Allocation_i + Req_i$, $Need'_i = Need_i - Req_i$.\newline
+4. Ejecuta el algoritmo de verificaci\'on de estado seguro buscando una secuencia completa $\langle P_{s_1}, \dots, P_{s_n} \rangle$ tal que $Need'_k \le Work$.\newline
+5. Si existe secuencia segura (\texttt{SAFE}), confirma la asignaci\'on y retorna la secuencia ordenada. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Estado Inseguro / Riesgo de Deadlock):} Si no existe secuencia segura (\texttt{UNSAFE}), revierte la asignaci\'on provisoria y bloquea al proceso (\texttt{BLOCKED}) previniendo el interbloqueo.\newline
+\textbf{A2 (Bloqueo en Sem\'aforo $P$):} Si el contador $S < 0$ tras decrementar, el proceso pasa a \texttt{BLOCKED} hasta una operaci\'on $V()$. \\
+\textbf{Postcondiciones} & El sistema permanece invariablemente en un estado libre de interbloqueo (\textit{Deadlock-Free Guarantee}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (req) {IPC: \texttt{BANKER\_REQUEST(pid, vector[A,B,C])} $\rightarrow$ \texttt{ProcessManager}};
+  \node[dec, below=of req] (val) {¿$Req_i \le Need_i$ y $Req_i \le Available$?};
+  \node[secact, right=5mm of val, text width=2.4cm] (err) {Rechaza por exceder reclamo o disponibilidad};
+  \node[srvact, below=of val] (sim) {Asigna provisoriamente: actualiza $Available'$, $Alloc'$, $Need'$};
+  \node[srvact, below=of sim] (test) {Ejecuta Test de Seguridad de Dijkstra ($Work \leftarrow Available'$)};
+  \node[dec, below=of test] (safe) {¿Existe secuencia $\langle P_{s_1}..P_{s_n}\rangle$ segura?};
+  \node[secact, right=5mm of safe, text width=2.4cm] (roll) {\textbf{UNSAFE}: Revierte asignaci\'on y bloquea \texttt{PCB}};
+  \node[srvact, below=of safe] (commit) {\textbf{SAFE}: Confirma asignaci\'on y publica secuencia segura};
+  \node[endnode, below=of commit] (end) {};
+
+  \draw[arrow] (start) -- (req);
+  \draw[arrow] (req) -- (val);
+  \draw[arrow] (val) -- node[above, font=\tiny]{No} (err);
+  \draw[arrow] (val) -- node[left, font=\tiny]{S\'i} (sim);
+  \draw[arrow] (sim) -- (test);
+  \draw[arrow] (test) -- (safe);
+  \draw[arrow] (safe) -- node[above, font=\tiny]{No} (roll);
+  \draw[arrow] (safe) -- node[left, font=\tiny]{S\'i} (commit);
+  \draw[arrow] (commit) -- (end);
+  \draw[arrow] (err.south) |- (end.east);
+  \draw[arrow] (roll.south) |- (end.east);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-03 (Prevenci\'on de Interbloqueos con Algoritmo del Banquero).}
+\label{fig:act_cu03}
+\end{figure}
+
+\subsection{CU-04: Asignaci\'on de Memoria F\'isica y An\'alisis de Fragmentaci\'on}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-04} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-04:} Asignaci\'on de Memoria F\'isica (Particionamiento Fijo/Din\'amico) y An\'alisis de Fragmentaci\'on. \\
+\textbf{Actores} & \texttt{ProcessManager}, Usuario Operador, \texttt{Kernel}, \texttt{MemoryManager}. \\
+\textbf{Precondiciones} & Esquema de memoria seleccionado (\texttt{STATIC\_FIXED} o \texttt{DYNAMIC\_VARIABLE}) y algoritmo (\texttt{FIRST\_FIT}, \texttt{BEST\_FIT}, \texttt{WORST\_FIT}). \\
+\textbf{Flujo Normal} & 1. \texttt{MemoryManager} recibe \texttt{IPCMessage(MEM\_ALLOC)} con \texttt{pid} y tama\~no solicitado $S_{\text{req}}$ KB.\newline
+2. Si el modo es \texttt{STATIC\_FIXED}, busca una partici\'on fija libre con capacidad $C_k \ge S_{\text{req}}$ seg\'un la pol\'itica de ajuste, marca la partici\'on ocupada y computa fragmentaci\'on interna $F_{\text{int}} = C_k - S_{\text{req}}$.\newline
+3. Si el modo es \texttt{DYNAMIC\_VARIABLE}, selecciona el hueco libre seg\'un First/Best/Worst-Fit y divide el bloque (\textit{split}) en una partici\'on exacta de $S_{\text{req}}$ KB ($F_{\text{int}} = 0$) y un hueco libre remanente.\newline
+4. Recalcula el reporte \texttt{FragmentationReport} y devuelve los registros base y l\'imite por IPC. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Fragmentaci\'on Externa Cr\'itica):} Si la suma de huecos libres es $\ge S_{\text{req}}$ pero ning\'un bloque contiguo individual alcanza, reporta fallo por fragmentaci\'on externa y habilita compactaci\'on (\texttt{MEM\_COMPACT}). \\
+\textbf{Postcondiciones} & Mapa visual de bloques de RAM y m\'etricas de fragmentaci\'on interna/externa actualizados. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (ipc) {IPC: \texttt{MEM\_ALLOC(pid, requestedKB)} $\rightarrow$ \texttt{MemoryManager}};
+  \node[dec, below=of ipc] (scheme) {¿Esquema de Particionamiento?};
+  \node[srvact, left=4mm of scheme, text width=2.6cm] (fixed) {\textbf{Fijo}: Busca bloque libre $C_k \ge S_{\text{req}}$ y calcula $F_{\text{int}} = C_k - S_{\text{req}}$};
+  \node[srvact, right=4mm of scheme, text width=2.6cm] (dyn) {\textbf{Din\'amico}: Selecciona hueco (First/Best/Worst) y divide (\textit{split})};
+  \node[dec, below=10mm of scheme] (found) {¿Se encontr\'o bloque contiguo suficiente?};
+  \node[secact, right=5mm of found, text width=2.4cm] (frag) {Reporta Fragmentaci\'on Externa / Requiere \texttt{MEM\_COMPACT}};
+  \node[srvact, below=of found] (upd) {Asigna registros \texttt{baseAddress/limit} y recalcula \texttt{FragmentationReport}};
+  \node[ipcact, below=of upd] (resp) {IPC Response: Retorna \texttt{blockId} y m\'etricas de fragmentaci\'on};
+  \node[endnode, below=of resp] (end) {};
+
+  \draw[arrow] (start) -- (ipc);
+  \draw[arrow] (ipc) -- (scheme);
+  \draw[arrow] (scheme.west) -- node[above, font=\tiny]{Fijo} (fixed.east);
+  \draw[arrow] (scheme.east) -- node[above, font=\tiny]{Din\'amico} (dyn.west);
+  \draw[arrow] (fixed.south) |- (found.west);
+  \draw[arrow] (dyn.south) |- (found.east);
+  \draw[arrow] (found) -- node[above, font=\tiny]{No} (frag);
+  \draw[arrow] (found) -- node[left, font=\tiny]{S\'i} (upd);
+  \draw[arrow] (upd) -- (resp);
+  \draw[arrow] (resp) -- (end);
+  \draw[arrow] (frag.south) |- (end.east);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-04 (Asignaci\'on de Memoria F\'isica y Fragmentaci\'on).}
+\label{fig:act_cu04}
+\end{figure}
+
+\subsection{CU-05: Operaciones CRUD Jer\'arquicas en el Sistema de Archivos Virtual}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-05} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-05:} Operaciones CRUD (\texttt{Create}, \texttt{Read}, \texttt{Write}, \texttt{Delete}) sobre el \'Arbol Jer\'arquico de Directorios. \\
+\textbf{Actores} & Usuario / Proceso, \texttt{Kernel}, \texttt{FileManager}, \texttt{SecurityController}, \texttt{DeviceDriver}. \\
+\textbf{Precondiciones} & \'Arbol VFS montado en \texttt{/}; usuario autenticado con un \texttt{uid} activo. \\
+\textbf{Flujo Normal} & 1. El actor solicita una operaci\'on CRUD indicando ruta (\texttt{/home/guest/notas.txt}), tipo y contenido.\newline
+2. \texttt{FileManager} recibe la petici\'on por IPC y consulta a \texttt{SecurityController} mediante \texttt{IPCMessage(SEC\_CHECK\_ACL)} si el \texttt{uid} posee el permiso requerido (\texttt{R}, \texttt{W} o \texttt{DELETE}).\newline
+3. Con autorizaci\'on \texttt{GRANTED}, resuelve el nodo padre en el \'arbol VFS y asigna/actualiza bloques de almacenamiento.\newline
+4. Env\'ia \texttt{IPCMessage(IO\_SUBMIT\_DISK)} al \texttt{DeviceDriver} para encolar el acceso f\'isico al cilindro asociado al i-nodo.\newline
+5. Retorna el nodo \texttt{FSNode} creado/modificado y registra la reglas ACL por defecto si es un archivo nuevo. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Acceso Denegado):} Si un usuario \texttt{Guest} intenta \texttt{WRITE} o \texttt{DELETE}, \texttt{SecurityController} retorna \texttt{DENIED} y aborta.\newline
+\textbf{A2 (Espacio en Disco Agotado):} Si los 64 bloques l\'ogicos est\'an ocupados, retorna error \texttt{ENOSPC}. \\
+\textbf{Postcondiciones} & \'Arbol de directorios VFS, bloques de disco y cola de E/S sincronizados. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (ipc1) {IPC: \texttt{FS\_CREATE / FS\_WRITE / FS\_READ / FS\_DELETE} $\rightarrow$ \texttt{FileManager}};
+  \node[secact, below=of ipc1] (sec) {IPC: \texttt{SEC\_CHECK\_ACL(uid, resourcePath, perm)} $\rightarrow$ \texttt{SecurityController}};
+  \node[dec, below=of sec] (dec1) {¿Acceso autorizado?};
+  \node[secact, right=5mm of dec1, text width=2.4cm] (deny) {Retorna \texttt{EACCES} y graba violaci\'on en AuditLog};
+  \node[srvact, below=of dec1] (vfs) {Resuelve ruta en \'arbol jer\'arquico VFS y asigna/libera bloques};
+  \node[ipcact, below=of vfs] (io) {IPC: \texttt{IO\_SUBMIT\_DISK(cylinder, op)} $\rightarrow$ \texttt{DeviceDriver}};
+  \node[srvact, below=of io] (done) {Actualiza metadatos (\texttt{sizeBytes}, \texttt{updatedAt}) y retorna \texttt{FSNode}};
+  \node[endnode, below=of done] (end) {};
+
+  \draw[arrow] (start) -- (ipc1);
+  \draw[arrow] (ipc1) -- (sec);
+  \draw[arrow] (sec) -- (dec1);
+  \draw[arrow] (dec1) -- node[above, font=\tiny]{No} (deny);
+  \draw[arrow] (dec1) -- node[left, font=\tiny]{S\'i} (vfs);
+  \draw[arrow] (vfs) -- (io);
+  \draw[arrow] (io) -- (done);
+  \draw[arrow] (done) -- (end);
+  \draw[arrow] (deny.south) |- (end.east);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-05 (Operaciones CRUD en el Sistema de Archivos Virtual).}
+\label{fig:act_cu05}
+\end{figure}
+
+\subsection{CU-06: Formateo y Asignaci\'on de Bloques mediante Tabla FAT e I-nodos}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-06} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-06:} Conmutaci\'on y Asignaci\'on de Almacenamiento mediante Tabla \texttt{FAT} o Estructura de \texttt{I-nodos}. \\
+\textbf{Actores} & Administrador / Operador, \texttt{Kernel}, \texttt{FileManager}. \\
+\textbf{Precondiciones} & Volumen VFS de 64 bloques de 4 KB inicializado en \texttt{FileManager}. \\
+\textbf{Flujo Normal} & 1. El actor selecciona el esquema de asignaci\'on (\texttt{FAT} o \texttt{INODES}) o escribe un archivo de $K$ bloques.\newline
+2. \texttt{FileManager} recibe \texttt{IPCMessage(FS\_FORMAT)} o recalcula la asignaci\'on de bloques para los nodos existentes.\newline
+3. Si el esquema es \texttt{FAT}, encadena cada bloque $b_i \rightarrow b_{i+1}$ en el arreglo \texttt{fatTable[]} marcando el \'ultimo con \texttt{EOF} ($-1$).\newline
+4. Si el esquema es \texttt{INODES}, asigna hasta 4 punteros directos en \texttt{directBlocks[]} y, si $K > 4$, reserva un bloque de \'indice para \texttt{singleIndirectBlocks[]}. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Archivo Mayor al L\'imite de I-nodo):} Si la cantidad de bloques supera los punteros directos m\'as indirectos disponibles, rechaza la asignaci\'on sin corromper la tabla de bloques. \\
+\textbf{Postcondiciones} & Tabla FAT e inspecci\'on de punteros de i-nodos actualizadas en el explorador del sistema de archivos. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (ipc) {IPC: \texttt{FS\_FORMAT / AllocateBlocks(sizeKB, scheme)} $\rightarrow$ \texttt{FileManager}};
+  \node[srvact, below=of ipc] (calc) {Calcula bloques requeridos $N_b = \lceil \text{sizeBytes} / 4096 \rceil$};
+  \node[dec, below=of calc] (sch) {¿Esquema de Asignaci\'on Activo?};
+  \node[srvact, left=4mm of sch, text width=2.6cm] (fat) {\textbf{FAT}: Enlaza cadena $FAT[b_k] = b_{k+1}$ y $FAT[b_{\text{last}}] = -1$ (\texttt{EOF})};
+  \node[srvact, right=4mm of sch, text width=2.6cm] (ino) {\textbf{INODES}: Llena 4 \texttt{directBlocks[]} + bloque \'indice \texttt{singleIndirect[]}};
+  \node[srvact, below=11mm of sch] (sync) {Sincroniza mapa de bits de bloques ocupados/libres ($64 \times 4$ KB)};
+  \node[endnode, below=of sync] (end) {};
+
+  \draw[arrow] (start) -- (ipc);
+  \draw[arrow] (ipc) -- (calc);
+  \draw[arrow] (calc) -- (sch);
+  \draw[arrow] (sch.west) -- node[above, font=\tiny]{\texttt{FAT}} (fat.east);
+  \draw[arrow] (sch.east) -- node[above, font=\tiny]{\texttt{INODES}} (ino.west);
+  \draw[arrow] (fat.south) |- (sync.west);
+  \draw[arrow] (ino.south) |- (sync.east);
+  \draw[arrow] (sync) -- (end);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-06 (Asignaci\'on mediante Tabla FAT vs. I-nodos).}
+\label{fig:act_cu06}
+\end{figure}
+
+\subsection{CU-07: Planificaci\'on del Brazo de Disco (FCFS, SSTF, SCAN, C-SCAN)}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-07} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-07:} Planificaci\'on del Brazo de Disco Magn\'etico (\texttt{FCFS}, \texttt{SSTF}, \texttt{SCAN}, \texttt{C-SCAN}). \\
+\textbf{Actores} & Usuario Operador, \texttt{FileManager}, \texttt{Kernel}, \texttt{DeviceDriver}. \\
+\textbf{Precondiciones} & Cabezal posicionado en cilindro inicial $C_0 \in [0, 199]$ y cola de peticiones $Q_c$ no vac\'ia. \\
+\textbf{Flujo Normal} & 1. El actor selecciona el algoritmo de brazo (\texttt{FCFS}, \texttt{SSTF}, \texttt{SCAN} o \texttt{C-SCAN}) y solicita ejecutar el barrido.\newline
+2. \texttt{DeviceDriver} recibe \texttt{IPCMessage(IO\_RUN\_DISK\_SCHED)} por el bus IPC.\newline
+3. Ordena la cola pendiente seg\'un la pol\'itica: orden de llegada (\texttt{FCFS}), menor distancia desde el cabezal actual (\texttt{SSTF}), barrido bidireccional con rebote en extremo (\texttt{SCAN}) o barrido circular unidireccional (\texttt{C-SCAN}).\newline
+4. Acumula la distancia recorrida $\Delta C = \sum |c_{i+1} - c_i|$, actualiza \texttt{headPosition} y activa el canal DMA. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Cilindro Fuera de Rango):} Todo cilindro solicitado fuera de $[0, 199]$ es acotado (\textit{clamped}) preventivamente. \\
+\textbf{Postcondiciones} & Gr\'afica de recorrido del cabezal y m\'etrica de cilindros totales desplazados actualizadas. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (ipc) {IPC: \texttt{IO\_RUN\_DISK\_SCHED(algorithm)} $\rightarrow$ \texttt{DeviceDriver}};
+  \node[dec, below=of ipc] (alg) {¿Algoritmo de Brazo Seleccionado?};
+  \node[srvact, left=4mm of alg, text width=2.6cm] (fcfs) {\textbf{FCFS / SSTF}: Orden de llegada o $\min |c_k - C_{\text{curr}}|$};
+  \node[srvact, right=4mm of alg, text width=2.6cm] (scan) {\textbf{SCAN / C-SCAN}: Barrido elevador o salto circular a $0$};
+  \node[srvact, below=10mm of alg] (move) {Desplaza cabezal cilindro a cilindro y suma $\sum |\Delta c|$};
+  \node[srvact, below=of move] (dma) {Inicia transferencia en \texttt{DMAController} para los bloques le\'idos};
+  \node[endnode, below=of dma] (end) {};
+
+  \draw[arrow] (start) -- (ipc);
+  \draw[arrow] (ipc) -- (alg);
+  \draw[arrow] (alg.west) -- (fcfs.east);
+  \draw[arrow] (alg.east) -- (scan.west);
+  \draw[arrow] (fcfs.south) |- (move.west);
+  \draw[arrow] (scan.south) |- (move.east);
+  \draw[arrow] (move) -- (dma);
+  \draw[arrow] (dma) -- (end);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-07 (Planificaci\'on del Brazo de Disco).}
+\label{fig:act_cu07}
+\end{figure}
+
+\subsection{CU-08: Transferencia As\'incrona por DMA y Transmisi\'on en Sockets de Red}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-08} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-08:} Transferencia As\'incrona por Canal \texttt{DMA} y Comunicaci\'on por \texttt{Sockets} de Red (\texttt{TCP}/\texttt{UDP}). \\
+\textbf{Actores} & Proceso de Usuario, \texttt{DeviceDriver}, \texttt{InterruptController}, \texttt{Kernel}, \texttt{ProcessManager}. \\
+\textbf{Precondiciones} & Canal \texttt{DMAController} inicializado y al menos un socket de red abierto (\texttt{OPEN}). \\
+\textbf{Flujo Normal} & 1. Al completarse el posicionamiento de cabezal o solicitarse env\'io de paquete (\texttt{NET\_SEND}), \texttt{DeviceDriver} programa el canal DMA (\texttt{status = BUSY}, \texttt{progressPct = 50\%}) sin bloquear la CPU.\newline
+2. Al concluir la transferencia en el siguiente ciclo de E/S, el canal DMA pasa a \texttt{DONE} ($100\%$) y eleva la interrupci\'on de hardware \texttt{IRQ\_DMA\_DONE} (o \texttt{IRQ\_NET\_RX} para sockets) ante el \texttt{Kernel}.\newline
+3. La rutina ISR del \texttt{Kernel} env\'ia \texttt{IPCMessage(PROC\_WAKEUP\_IO)} a \texttt{ProcessManager} para despertar cualquier proceso bloqueado por E/S (\texttt{BLOCKED} $\rightarrow$ \texttt{READY}). \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Socket Cerrado):} Si se intenta transmitir sobre un socket inexistente, retorna error \texttt{ENOTCONN} por IPC. \\
+\textbf{Postcondiciones} & Bytes transferidos por DMA contabilizados, buffers TX/RX actualizados y proceso solicitante despertado. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[srvact, below=of start] (cfg) {\texttt{DeviceDriver} programa \texttt{DMAController} (\texttt{BUSY}) o \texttt{SimulatedSocket}};
+  \node[act, below=of cfg] (cpu) {CPU principal contin\'ua ejecutando otros procesos en paralelo};
+  \node[srvact, below=of cpu] (done) {Canal DMA completa transferencia de bloques ($100\% \rightarrow$ \texttt{DONE})};
+  \node[ipcact, below=of done] (irq) {Hardware emite \texttt{IRQ\_DMA\_DONE} / \texttt{IRQ\_NET\_RX} $\rightarrow$ \texttt{InterruptController}};
+  \node[ipcact, below=of irq] (wake) {ISR env\'ia IPC \texttt{PROC\_WAKEUP\_IO} $\rightarrow$ \texttt{ProcessManager}};
+  \node[srvact, below=of wake] (ready) {Proceso esperando E/S transiciona \texttt{BLOCKED} $\rightarrow$ \texttt{READY}};
+  \node[endnode, below=of ready] (end) {};
+
+  \draw[arrow] (start) -- (cfg);
+  \draw[arrow] (cfg) -- (cpu);
+  \draw[arrow] (cpu) -- (done);
+  \draw[arrow] (done) -- (irq);
+  \draw[arrow] (irq) -- (wake);
+  \draw[arrow] (wake) -- (ready);
+  \draw[arrow] (ready) -- (end);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-08 (Transferencia DMA e Interrupciones de E/S y Red).}
+\label{fig:act_cu08}
+\end{figure}
+
+\subsection{CU-09: Autenticaci\'on de Perfiles, Validaci\'on ACL y Auditor\'ia Inmutable}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-09} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-09:} Autenticaci\'on de Perfiles (\texttt{Root}, \texttt{Standard}, \texttt{Guest}), Validaci\'on ACL y Log de Auditor\'ia. \\
+\textbf{Actores} & Usuario Operador, \texttt{Kernel}, \texttt{SecurityController}. \\
+\textbf{Precondiciones} & Cuentas base inicializadas (\texttt{root}: $uid=0$, \texttt{standard}: $uid=1000$, \texttt{guest}: $uid=2000$). \\
+\textbf{Flujo Normal} & 1. El usuario conmuta de perfil (\texttt{SEC\_LOGIN}) o solicita validar acceso sobre un recurso (\texttt{SEC\_CHECK\_ACL}).\newline
+2. \texttt{SecurityController} busca la entrada en la matriz ACL para el recurso y eval\'ua los permisos del rol activo.\newline
+3. Construye un registro \texttt{SecurityAuditLog} encadenando criptogr\'aficamente el hash FNV-1a previo ($H_n = \text{FNV1a}(H_{n-1} \parallel \text{payload})$) y lo congela con \texttt{Object.freeze()}.\newline
+4. Si un administrador \texttt{Root} modifica una regla (\texttt{SEC\_SET\_ACL}), actualiza los permisos del objeto y audita el cambio. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Intento de Escalada de Privilegios):} Si \texttt{Standard} o \texttt{Guest} intentan ejecutar \texttt{SEC\_SET\_ACL} o escribir en \texttt{/etc/passwd}, se rechaza (\texttt{DENIED}) y se emite \texttt{TRAP\_SECURITY\_VIOLATION}. \\
+\textbf{Postcondiciones} & Bit\'acora de auditor\'ia actualizada con cadena de hashes verificable al $100\%$. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[ipcact, below=of start] (ipc) {IPC: \texttt{SEC\_CHECK\_ACL(uid, resourceId, op)} $\rightarrow$ \texttt{SecurityController}};
+  \node[secact, below=of ipc] (lookup) {Consulta Matriz ACL para \texttt{resourceId} y rol (\texttt{ROOT/STANDARD/GUEST})};
+  \node[dec, below=of lookup] (allow) {¿Bit de permiso activo en ACL?};
+  \node[secact, left=4mm of allow, text width=2.5cm] (grant) {Decisi\'on = \texttt{GRANTED}};
+  \node[secact, right=4mm of allow, text width=2.5cm] (deny) {Decisi\'on = \texttt{DENIED} + \texttt{TRAP\_SECURITY\_VIOLATION}};
+  \node[secact, below=10mm of allow] (hash) {Calcula hash encadenado $H_n = \text{FNV1a}(H_{n-1} \parallel \text{log})$ y congela entrada};
+  \node[ipcact, below=of hash] (ret) {Retorna sobre IPC con decisi\'on y hash de auditor\'ia $H_n$};
+  \node[endnode, below=of ret] (end) {};
+
+  \draw[arrow] (start) -- (ipc);
+  \draw[arrow] (ipc) -- (lookup);
+  \draw[arrow] (lookup) -- (allow);
+  \draw[arrow] (allow.west) -- node[above, font=\tiny]{S\'i} (grant.east);
+  \draw[arrow] (allow.east) -- node[above, font=\tiny]{No} (deny.west);
+  \draw[arrow] (grant.south) |- (hash.west);
+  \draw[arrow] (deny.south) |- (hash.east);
+  \draw[arrow] (hash) -- (ret);
+  \draw[arrow] (ret) -- (end);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-09 (Validaci\'on de Matriz ACL y Auditor\'ia Encadenada).}
+\label{fig:act_cu09}
+\end{figure}
+
+\subsection{CU-10: Persistencia Transaccional de Instant\'aneas del Sistema}
+\begin{table}[!htb]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{L{2.1cm} Y}
+\toprule
+\textbf{Campo} & \textbf{Especificaci\'on Formal del Caso de Uso CU-10} \\
+\midrule
+\textbf{ID y Nombre} & \textbf{CU-10:} Persistencia y Restauraci\'on de Instant\'aneas del Sistema en \texttt{LocalStorage} e \texttt{IndexedDB}. \\
+\textbf{Actores} & Usuario Operador, \texttt{AppController}, \texttt{Kernel}, \texttt{PersistenceStore}. \\
+\textbf{Precondiciones} & Subsistema \texttt{PersistenceStore} inicializado y los 5 servidores en estado consistente. \\
+\textbf{Flujo Normal} & 1. El actor acciona ``Guardar Snapshot'' o ``Restaurar Snapshot'' en la barra superior del dashboard.\newline
+2. \texttt{Kernel.exportFullSnapshot()} recolecta el estado serializable de \texttt{ProcessManager}, \texttt{MemoryManager}, \texttt{FileManager}, \texttt{DeviceDriver} y \texttt{SecurityController}.\newline
+3. \texttt{PersistenceStore.saveSnapshot()} almacena el documento completo en \texttt{LocalStorage} y ejecuta una transacci\'on \texttt{readwrite} en \texttt{IndexedDB} poblando los almacenes relacionales.\newline
+4. Al restaurar, \texttt{Kernel.restoreFullSnapshot()} reconstruye todas las instancias de dominio y refresca las 5 vistas. \\
+\textbf{Flujos Alternativos} & \textbf{A1 (Sin Instant\'anea Previa):} Si no existe snapshot guardado al solicitar restauraci\'on, informa al operador y conserva el estado actual sin p\'erdida de datos. \\
+\textbf{Postcondiciones} & Estado \'integro del Minikernel persistido de forma durable y verificable en el navegador. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.86, transform shape, node distance=2.8mm and 3.5mm]
+  \node[startstop] (start) {};
+  \node[act, below=of start] (cmd) {Actor solicita Guardar o Restaurar Instant\'anea del Minikernel};
+  \node[dec, below=of cmd] (op) {¿Operaci\'on solicitada?};
+  \node[srvact, left=4mm of op, text width=2.6cm] (save) {\textbf{Guardar}: \texttt{kernel.exportFullSnapshot()} de los 5 servidores};
+  \node[srvact, right=4mm of op, text width=2.6cm] (load) {\textbf{Restaurar}: Lee JSON desde \texttt{LocalStorage} / \texttt{IndexedDB}};
+  \node[act, below=10mm of op] (tx) {Sincroniza almacenes (\texttt{processes}, \texttt{memory\_blocks}, \texttt{fs\_nodes}, \texttt{acl}, \texttt{logs})};
+  \node[act, below=of tx] (ui) {\texttt{AppController.renderAll()} actualiza los 5 paneles del Dashboard};
+  \node[endnode, below=of ui] (end) {};
+
+  \draw[arrow] (start) -- (cmd);
+  \draw[arrow] (cmd) -- (op);
+  \draw[arrow] (op.west) -- (save.east);
+  \draw[arrow] (op.east) -- (load.west);
+  \draw[arrow] (save.south) |- (tx.west);
+  \draw[arrow] (load.south) |- (tx.east);
+  \draw[arrow] (tx) -- (ui);
+  \draw[arrow] (ui) -- (end);
+\end{tikzpicture}
+\caption{Diagrama de Actividad UML para CU-10 (Persistencia Transaccional en LocalStorage e IndexedDB).}
+\label{fig:act_cu10}
+\end{figure}
+
+% ============================================================================
+% SECCION IV: ARQUITECTURA ORIENTADA A OBJETOS Y DIAGRAMA DE CLASES UML
+% ============================================================================
+\section{Arquitectura Orientada a Objetos y Diagrama de Clases UML}
+
+Cumpliendo con la Secci\'on 3.4 de la gu\'ia del proyecto, la Fig. \ref{fig:uml_clases} presenta el \textbf{Diagrama de Clases UML} completo del sistema. El modelo incluye expl\'icitamente las siete clases troncales exigidas (\texttt{Kernel}, \texttt{PCB}, \texttt{MemoryManager}, \texttt{FileManager}, \texttt{DeviceDriver}, \texttt{SecurityController} e \texttt{IPCMessage}), junto con sus clases auxiliares de dominio (\texttt{IPCBus}, \texttt{SystemClock}, \texttt{InterruptController}, \texttt{Semaphore}, \texttt{BankerAlgorithm}, \texttt{MemoryPartition}, \texttt{FSNode}, \texttt{DMAController}, \texttt{SimulatedSocket}, \texttt{SecurityAuditLog} y \texttt{PersistenceStore}). Todos los nombres de atributos y m\'etodos coinciden de manera exacta ($1:1$) con la implementaci\'on modular en \texttt{src/}.
+
+\begin{figure*}[!t]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape]
+  % Core Classes
+  \node[umlclass, fill=kernelBg, text width=5.4cm] (kernel) at (0, 5.1) {
+    \textbf{\centerline{\guillemotleft Ring 0\guillemotright\ Kernel}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ clock: SystemClock}\\
+    \texttt{+ ipcBus: IPCBus}\\
+    \texttt{+ interruptController: InterruptController}\\
+    \texttt{+ servers: Map<String, Object>}\\
+    \texttt{+ contextSwitchCostTicks: Number}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ registerServer(endpoint, instance): void}\\
+    \texttt{+ sysCall(target, action, payload, sender): IPCMessage}\\
+    \texttt{+ raiseInterrupt(irq, src, prio, data): InterruptRequest}\\
+    \texttt{+ stepTick(): Object}\\
+    \texttt{+ performContextSwitch(outPCB, inPCB): Object}\\
+    \texttt{+ exportFullSnapshot(): Object}
+  };
+
+  \node[umlclass, fill=ipcBg, text width=5.2cm] (ipcmsg) at (-6.4, 5.1) {
+    \textbf{\centerline{\guillemotleft ValueObject\guillemotright\ IPCMessage}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ msgId: String}\\
+    \texttt{+ timestampTick: Number}\\
+    \texttt{+ sender: String}\\
+    \texttt{+ receiver: String}\\
+    \texttt{+ type: 'REQUEST'|'RESPONSE'|'EVENT'|'ERROR'}\\
+    \texttt{+ action: String}\\
+    \texttt{+ payload: Object (frozen)}\\
+    \texttt{+ correlationId: String}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ createResponse(sender, payload, ok): IPCMessage}\\
+    \texttt{+ toJSON(): Object}
+  };
+
+  \node[umlclass, fill=ipcBg, text width=5.2cm] (ipcbus) at (6.4, 5.1) {
+    \textbf{\centerline{IPCBus \& InterruptController}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{- handlers: Map<String, Function>}\\
+    \texttt{- mailboxes: Map<String, Array<IPCMessage>>}\\
+    \texttt{- messageLog: Array<IPCMessage>}\\
+    \texttt{- pendingIRQs: Array<InterruptRequest>}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ registerEndpoint(endpointId, fn): void}\\
+    \texttt{+ send(ipcMessage): IPCMessage}\\
+    \texttt{+ raiseIRQ(irqRequest): InterruptRequest}\\
+    \texttt{+ processNextIRQ(tick): Object}
+  };
+
+  % 5 Server Classes + PCB
+  \node[umlclass, fill=serverBg, text width=5.4cm] (pm) at (-6.4, 0.2) {
+    \textbf{\centerline{\guillemotleft Server\guillemotright\ ProcessManager}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ pcbTable: Map<Number, PCB>}\\
+    \texttt{+ readyQueue: Array<Number>}\\
+    \texttt{+ runningPid: Number | null}\\
+    \texttt{+ algorithm: 'RR'|'PRIORITY\_PREEMPTIVE'|'SRTF'}\\
+    \texttt{+ quantum: Number}\\
+    \texttt{+ semaphores: Map<String, Semaphore>}\\
+    \texttt{+ banker: BankerAlgorithm}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ handleIPCMessage(msg): IPCMessage}\\
+    \texttt{+ createProcess(params): Object}\\
+    \texttt{+ onClockTick(): Object}\\
+    \texttt{+ waitSemaphore(semId, pid): Object}\\
+    \texttt{+ signalSemaphore(semId): Object}
+  };
+
+  \node[umlclass, fill=serverBg, text width=5.2cm] (pcb) at (-6.4, -4.6) {
+    \textbf{\centerline{\guillemotleft Entity\guillemotright\ PCB}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ pid: Number; + name: String}\\
+    \texttt{+ state: 'NEW'|'READY'|'RUNNING'|'BLOCKED'}\\
+    \texttt{+ priority: Number; + ownerUid: Number}\\
+    \texttt{+ burstTime: Number; + remainingBurst: Number}\\
+    \texttt{+ waitingTime: Number; + turnaroundTime: Number}\\
+    \texttt{+ registers: \{PC, SP, ACC, PSW, baseAddress, limitAddress\}}\\
+    \texttt{+ maxResources: Array<Number>}\\
+    \texttt{+ allocatedResources: Array<Number>}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ saveContext(): Object}\\
+    \texttt{+ restoreContext(snapshot): void}
+  };
+
+  \node[umlclass, fill=serverBg, text width=5.4cm] (mm) at (0, 0.2) {
+    \textbf{\centerline{\guillemotleft Server\guillemotright\ MemoryManager}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ totalMemoryKB: Number (1024)}\\
+    \texttt{+ scheme: 'STATIC\_FIXED'|'DYNAMIC\_VARIABLE'}\\
+    \texttt{+ fitAlgorithm: 'FIRST\_FIT'|'BEST\_FIT'|'WORST\_FIT'}\\
+    \texttt{+ partitions: Array<MemoryPartition>}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ handleIPCMessage(msg): IPCMessage}\\
+    \texttt{+ configureScheme(scheme, fitAlgo): Object}\\
+    \texttt{+ allocate(pid, processName, requestedKB): Object}\\
+    \texttt{+ deallocate(pid): Object}\\
+    \texttt{+ coalesceFreeBlocks(): void}\\
+    \texttt{+ compactMemory(): Object}\\
+    \texttt{+ calculateFragmentation(): FragmentationReport}
+  };
+
+  \node[umlclass, fill=serverBg, text width=5.4cm] (fm) at (6.4, 0.2) {
+    \textbf{\centerline{\guillemotleft Server\guillemotright\ FileManager}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ allocationScheme: 'FAT'|'INODES'}\\
+    \texttt{+ totalBlocks: Number (64); + blockSizeKB: Number (4)}\\
+    \texttt{+ nodesByPath: Map<String, FSNode>}\\
+    \texttt{+ fatTable: Array<Number>}\\
+    \texttt{+ inodeTable: Map<Number, Object>}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ handleIPCMessage(msg): IPCMessage}\\
+    \texttt{+ createNode(params): Object}\\
+    \texttt{+ readFile(params): Object}\\
+    \texttt{+ writeFile(params): Object}\\
+    \texttt{+ deleteNode(params): Object}\\
+    \texttt{+ formatAllocationScheme(scheme): Object}
+  };
+
+  \node[umlclass, fill=serverBg, text width=5.4cm] (dd) at (0, -4.6) {
+    \textbf{\centerline{\guillemotleft Server\guillemotright\ DeviceDriver}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ diskAlgorithm: 'FCFS'|'SSTF'|'SCAN'|'C-SCAN'}\\
+    \texttt{+ headPosition: Number; + headDirection: 'UP'|'DOWN'}\\
+    \texttt{+ requestQueue: Array<Object>}\\
+    \texttt{+ dmaController: DMAController}\\
+    \texttt{+ sockets: Map<Number, SimulatedSocket>}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ handleIPCMessage(msg): IPCMessage}\\
+    \texttt{+ enqueueDiskRequest(params): Object}\\
+    \texttt{+ runDiskScheduler(algorithm): Object}\\
+    \texttt{+ stepIO(currentTick): Object}\\
+    \texttt{+ sendSocketPacket(params): Object}
+  };
+
+  \node[umlclass, fill=secBg, text width=5.4cm] (sc) at (6.4, -4.6) {
+    \textbf{\centerline{\guillemotleft Server\guillemotright\ SecurityController}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ users: Map<Number, UserAccount>}\\
+    \texttt{+ activeUid: Number}\\
+    \texttt{+ aclMatrix: Map<String, Object>}\\
+    \texttt{+ auditLogs: Array<SecurityAuditLog>}\\
+    \texttt{+ lastChainHash: String}\\[2pt]\hrule\vspace{2pt}
+    \texttt{+ handleIPCMessage(msg): IPCMessage}\\
+    \texttt{+ login(uidOrUsername): Object}\\
+    \texttt{+ checkAccess(uid, resourceId, op): Object}\\
+    \texttt{+ setACLRule(actorUid, resourceId, perms): Object}\\
+    \texttt{+ verifyAuditIntegrity(): Object}
+  };
+
+  % Relaciones UML
+  \draw[->, >=Stealth, thick, draw=ieeeBlue] (kernel.west) -- node[above, font=\tiny]{enruta} (ipcmsg.east);
+  \draw[{Diamond[length=4pt]}-{Stealth[scale=0.8]}, thick, draw=ieeeBlue] (kernel.east) -- node[above, font=\tiny]{1..1} (ipcbus.west);
+  \draw[->, >=Stealth, thick, draw=borderOrange] (kernel.south) -- (mm.north);
+  \draw[->, >=Stealth, thick, draw=borderOrange] (kernel.south -| pm.north) -- (pm.north);
+  \draw[->, >=Stealth, thick, draw=borderOrange] (kernel.south -| fm.north) -- (fm.north);
+  \draw[{Diamond[length=4pt]}-{Stealth[scale=0.8]}, thick, draw=borderGreen] (pm.south) -- node[right, font=\tiny]{1..* gestiona} (pcb.north);
+  \draw[<->, >=Stealth, dashed, thick, draw=borderOrange] (pm.east) -- node[above, font=\tiny]{IPC \texttt{MEM\_ALLOC}} (mm.west);
+  \draw[<->, >=Stealth, dashed, thick, draw=borderOrange] (mm.east) -- node[above, font=\tiny]{IPC Bus} (fm.west);
+  \draw[<->, >=Stealth, dashed, thick, draw=borderOrange] (fm.south) -- node[right, font=\tiny]{IPC \texttt{SEC\_CHECK\_ACL}} (sc.north);
+  \draw[<->, >=Stealth, dashed, thick, draw=borderOrange] (fm.south -| dd.north) -- node[left, font=\tiny]{IPC \texttt{IO\_SUBMIT}} (dd.north);
+\end{tikzpicture}
+\caption{Diagrama de Clases UML de la Arquitectura Microkernel mostrando el n\'ucleo \texttt{Kernel}, el sobre \texttt{IPCMessage}, el bloque \texttt{PCB} y los 5 servidores desacoplados.}
+\label{fig:uml_clases}
+\end{figure*}
+
+% ============================================================================
+% SECCION V: MAPA DE NAVEGACION WEB (UX/UI)
+% ============================================================================
+\section{Mapa de Navegaci\'on Web e Interfaz Interactiva (UX/UI)}
+
+De acuerdo con la Secci\'on 3.5 de la gu\'ia del proyecto, la aplicaci\'on web se estructura como una \textit{Single-Page Application} (SPA) reactiva con barra de control global del Minikernel siempre visible, navegaci\'on por pesta\~nas hacia los cinco m\'odulos de servidores en espacio de usuario y un inspector inferior en vivo del bus de mensajes IPC. La Fig. \ref{fig:mapa_navegacion} ilustra la topolog\'ia de navegaci\'on implementada en \texttt{index.html} y controlada por \texttt{AppController.js}.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.74, transform shape, node distance=3.5mm]
+  \node[rectangle, draw=ieeeBlue, fill=kernelBg, rounded corners=3pt, minimum width=8.4cm, minimum height=0.85cm, align=center, font=\scriptsize\bfseries] (shell) at (0, 2.2) {Shell Principal del Simulador (\texttt{index.html} + \texttt{AppController.js})\\Barra de Reloj Maestro (\texttt{Play / Pause / +1 Tick / Frecuencia Hz / Snapshot}) + Selector de Sesi\'on (\texttt{Root/Std/Guest})};
+
+  \node[srvact, text width=1.45cm, minimum height=1.1cm] (t1) at (-3.36, 0.7) {\textbf{Tab 1}\\Procesos y CPU\\\tiny PCB, Gantt, Banquero};
+  \node[srvact, text width=1.45cm, minimum height=1.1cm] (t2) at (-1.68, 0.7) {\textbf{Tab 2}\\Memoria RAM\\\tiny Fija/Din\'amica\\First/Best/Worst};
+  \node[srvact, text width=1.45cm, minimum height=1.1cm] (t3) at (0, 0.7) {\textbf{Tab 3}\\Archivos VFS\\\tiny \'Arbol POSIX\\FAT e Inodos};
+  \node[srvact, text width=1.45cm, minimum height=1.1cm] (t4) at (1.68, 0.7) {\textbf{Tab 4}\\Disco y E/S\\\tiny FCFS/SSTF/SCAN\\DMA y Sockets};
+  \node[secact, text width=1.45cm, minimum height=1.1cm] (t5) at (3.36, 0.7) {\textbf{Tab 5}\\Seguridad ACL\\\tiny Matriz ACL y\\AuditLog Hash};
+
+  \node[rectangle, draw=borderOrange, fill=ipcBg, rounded corners=2pt, minimum width=8.4cm, minimum height=0.75cm, align=center, font=\scriptsize\bfseries] (dock) at (0, -0.65) {Consola Inferior Permanente: Inspector del Bus IPC en Vivo y Vector de Interrupciones IRQ};
+
+  \foreach \x in {t1,t2,t3,t4,t5} {
+    \draw[<->, >=Stealth, thick, draw=ieeeBlue] (shell.south -| \x.north) -- (\x.north);
+    \draw[->, >=Stealth, dashed, draw=borderOrange] (\x.south) -- (dock.north -| \x.south);
+  }
+\end{tikzpicture}
+\caption{Mapa de Navegaci\'on Web (UX/UI) de la Aplicaci\'on Interactiva del Sistema Operativo Minikernel.}
+\label{fig:mapa_navegacion}
+\end{figure}
+
+% ============================================================================
+% SECCION VI: ESQUEMA RELACIONAL Y PERSISTENCIA
+% ============================================================================
+\section{Modelo del Esquema Relacional y Persistencia de Estado}
+
+Para satisfacer la Secci\'on 3.6 de la gu\'ia del proyecto, el m\'odulo \texttt{PersistenceStore.js} implementa un esquema relacional normalizado en Tercera Forma Normal (3FN) materializado sobre siete almacenes de objetos (\textit{Object Stores}) en \texttt{IndexedDB} (\texttt{MinikernelDB\_2026\_2}) y respaldado de forma s\'incrona en \texttt{LocalStorage}. La Fig. \ref{fig:esquema_er} muestra el diagrama Entidad-Relaci\'on con sus llaves primarias (\texttt{PK}), llaves for\'aneas (\texttt{FK}) y cardinalidades.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[scale=0.80, transform shape]
+  \node[umlclass, fill=secBg, text width=3.9cm] (users) at (-2.5, 2.3) {
+    \textbf{\centerline{USERS (Perfiles)}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} uid: INT}\\
+    \texttt{username: VARCHAR(32)}\\
+    \texttt{role: ENUM(ROOT,STD,GUEST)}\\
+    \texttt{privilegeRing: VARCHAR(16)}
+  };
+
+  \node[umlclass, fill=serverBg, text width=4.1cm] (procs) at (2.5, 2.3) {
+    \textbf{\centerline{PROCESSES (Tabla PCB)}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} pid: INT}\\
+    \texttt{\textbf{FK} owner\_uid: INT}\\
+    \texttt{\textbf{FK} memory\_block\_id: VARCHAR}\\
+    \texttt{state: VARCHAR; priority: INT}\\
+    \texttt{burst\_time: INT; remaining: INT}\\
+    \texttt{registers\_json: JSONB}
+  };
+
+  \node[umlclass, fill=serverBg, text width=3.9cm] (mem) at (2.5, -0.3) {
+    \textbf{\centerline{MEMORY\_BLOCKS}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} block\_id: VARCHAR(16)}\\
+    \texttt{\textbf{FK} pid: INT NULL}\\
+    \texttt{base\_kb: INT; size\_kb: INT}\\
+    \texttt{internal\_frag\_kb: INT}
+  };
+
+  \node[umlclass, fill=serverBg, text width=3.9cm] (fs) at (-2.5, -0.3) {
+    \textbf{\centerline{FS\_NODES (Inodos/FAT)}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} inode\_id: INT}\\
+    \texttt{\textbf{FK} owner\_uid: INT}\\
+    \texttt{path: VARCHAR(255) UNIQUE}\\
+    \texttt{type: ENUM(FILE,DIR)}\\
+    \texttt{blocks\_json: JSONB}
+  };
+
+  \node[umlclass, fill=secBg, text width=3.9cm] (acl) at (-2.5, -2.8) {
+    \textbf{\centerline{ACL\_ENTRIES}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} resource\_id: VARCHAR}\\
+    \texttt{\textbf{FK} owner\_uid: INT}\\
+    \texttt{permissions\_json: JSONB}
+  };
+
+  \node[umlclass, fill=ipcBg, text width=4.1cm] (audit) at (2.5, -2.8) {
+    \textbf{\centerline{AUDIT\_LOGS (Inmutable)}}\\[2pt]\hrule\vspace{2pt}
+    \texttt{\textbf{PK} log\_id: VARCHAR(16)}\\
+    \texttt{\textbf{FK} uid: INT}\\
+    \texttt{resource\_id: VARCHAR; op: CHAR}\\
+    \texttt{decision: ENUM(GRANTED,DENIED)}\\
+    \texttt{prev\_hash: CHAR(8); hash: CHAR(8)}
+  };
+
+  \draw[->, >=Stealth, thick, draw=borderRed] (users.east) -- node[above, font=\tiny]{1 : N} (procs.west);
+  \draw[->, >=Stealth, thick, draw=borderGreen] (procs.south) -- node[right, font=\tiny]{1 : 1} (mem.north);
+  \draw[->, >=Stealth, thick, draw=borderRed] (users.south) -- node[left, font=\tiny]{1 : N} (fs.north);
+  \draw[->, >=Stealth, thick, draw=borderRed] (fs.south) -- node[left, font=\tiny]{1 : 1} (acl.north);
+  \draw[->, >=Stealth, thick, draw=borderOrange] (users.south east) -- node[pos=0.7, right, font=\tiny]{1 : N} (audit.north west);
+\end{tikzpicture}
+\caption{Diagrama Entidad-Relaci\'on del Esquema de Persistencia en \texttt{IndexedDB} y \texttt{LocalStorage}.}
+\label{fig:esquema_er}
+\end{figure}
+
+% ============================================================================
+% SECCION VII: TRAZABILIDAD Y AUDITORIA ANTI-FALLAS DE KERNEL
+% ============================================================================
+\begin{table*}[!t]
+\caption{Matriz de Trazabilidad Cruzada Requerimientos $\leftrightarrow$ Casos de Uso $\leftrightarrow$ Clases $\leftrightarrow$ Implementaci\'on}
+\label{tab:trazabilidad}
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{L{1.4cm} L{2.8cm} L{4.2cm} Y}
+\toprule
+\textbf{Caso Uso} & \textbf{Reqs. Cubiertos} & \textbf{Clases Principales} & \textbf{Archivo Fuente Verificado} \\
+\midrule
+\textbf{CU-01} & RF-04..RF-06, RNF-01 & \texttt{Kernel}, \texttt{PCB}, \texttt{ProcessManager} & \texttt{src/core/Kernel.js}, \texttt{src/servers/ProcessManager.js} \\
+\textbf{CU-02} & RF-01, RF-07..RF-09 & \texttt{SystemClock}, \texttt{ProcessManager} & \texttt{src/servers/ProcessManager.js} \\
+\textbf{CU-03} & RF-10, RF-11, RNF-09 & \texttt{Semaphore}, \texttt{BankerAlgorithm} & \texttt{src/servers/ProcessManager.js} \\
+\textbf{CU-04} & RF-12..RF-14, RNF-08 & \texttt{MemoryManager}, \texttt{MemoryPartition} & \texttt{src/servers/MemoryManager.js} \\
+\textbf{CU-05} & RF-15, RF-18, RF-24 & \texttt{FileManager}, \texttt{FSNode} & \texttt{src/servers/FileManager.js} \\
+\textbf{CU-06} & RF-16, RF-17 & \texttt{FileManager} (\texttt{FAT}/\texttt{INODES}) & \texttt{src/servers/FileManager.js} \\
+\textbf{CU-07} & RF-19, RF-20 & \texttt{DeviceDriver}, \texttt{DiskGeometry} & \texttt{src/servers/DeviceDriver.js} \\
+\textbf{CU-08} & RF-03, RF-21, RF-22 & \texttt{DMAController}, \texttt{SimulatedSocket} & \texttt{src/servers/DeviceDriver.js}, \texttt{src/core/IPCMessage.js} \\
+\textbf{CU-09} & RF-23..RF-25, RNF-05 & \texttt{SecurityController}, \texttt{SecurityAuditLog} & \texttt{src/servers/SecurityController.js} \\
+\textbf{CU-10} & RF-26..RF-30, RNF-06 & \texttt{PersistenceStore}, \texttt{AppController} & \texttt{src/persistence/PersistenceStore.js}, \texttt{src/ui/AppController.js} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\section{Verificaci\'on Cruzada y Auditor\'ia ``Cero Fallas de Kernel''}
+
+Atendiendo la exigencia de la Secci\'on 4 de la gu\'ia acad\'emica (\textit{``Cero Fallas de Kernel: la consistencia entre los diagramas y la l\'ogica descrita tendr\'a el mayor peso en la calificaci\'on''}), se ejecut\'o una suite automatizada de verificaci\'on (\texttt{tests/verify\_minikernel.js}) que valida el acoplamiento exacto entre la especificaci\'on documental, los diagramas UML y el c\'odigo ejecutable. La Tabla \ref{tab:trazabilidad} resume la matriz de trazabilidad completa y los resultados de verificaci\'on.
+
+Los resultados emp\'iricos de la suite de pruebas (\texttt{node tests/verify\_minikernel.js}) comprobaron:
+\begin{itemize}[leftmargin=*,nosep]
+  \item \textbf{Aislamiento Microkernel:} $26$ mensajes IPC despachados sin acceso cruzado de memoria entre los 5 servidores.
+  \item \textbf{Integridad de Auditor\'ia ACL:} $100\%$ de validez en la cadena hash FNV-1a ante intentos denegados del perfil \texttt{Guest}.
+  \item \textbf{Sincronizaci\'on DOM $\leftrightarrow$ Controlador:} $101/101$ identificadores interactivos verificados sin referencias hu\'erfanas.
+\end{itemize}
+
+% ============================================================================
+% SECCION VIII: CONCLUSIONES Y REFERENCIAS IEEE
+% ============================================================================
+\section{Conclusiones}
+
+\begin{enumerate}[leftmargin=*,nosep]
+  \item Se dise\~n\'o e implement\'o satisfactoriamente un Sistema Operativo pedag\'ogico bajo una arquitectura \textbf{Microkernel (Minikernel)} estricta, demostrando que la reducci\'on del n\'ucleo en \texttt{Ring 0} a las primitivas de reloj, interrupciones y paso de mensajes \texttt{IPCBus} elimina los puntos \'unicos de falla propios de los sistemas monol\'iticos.
+  \item La modelaci\'on expl\'icita de la sobrecarga de cambio de contexto ($T_{cs}$), junto con los algoritmos de planificaci\'on expropiativa (\texttt{RR}, \texttt{Prioridades}, \texttt{SRTF}), el Algoritmo del Banquero de Dijkstra y los esquemas de particionamiento de memoria (\texttt{First-Fit}, \texttt{Best-Fit}, \texttt{Worst-Fit}), permite analizar cuantitativamente los compromisos entre tiempo de respuesta, utilizaci\'on de CPU y fragmentaci\'on interna/externa.
+  \item La integraci\'on del sistema de archivos jer\'arquico dual (\texttt{FAT} e \texttt{I-nodos}) con el planificador de brazo de disco (\texttt{FCFS}, \texttt{SSTF}, \texttt{SCAN}, \texttt{C-SCAN}), el controlador \texttt{DMA} y la matriz de control de acceso \texttt{ACL} con auditor\'ia encadenada demuestra una trazabilidad del $100\%$ (\textit{Cero Fallas de Kernel}) entre la ingenier\'ia de requerimientos, los 10 diagramas de actividad UML, el modelo de clases y la simulaci\'on web interactiva.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\scriptsize
+\bibitem{tanenbaum2015}
+A. S. Tanenbaum and H. Bos, \emph{Modern Operating Systems}, 4th ed. Upper Saddle River, NJ, USA: Pearson Prentice Hall, 2015.
+
+\bibitem{silberschatz2018}
+A. Silberschatz, P. B. Galvin, and G. Gagne, \emph{Operating System Concepts}, 10th ed. Hoboken, NJ, USA: John Wiley \& Sons, 2018.
+
+\bibitem{liedtke1995}
+J. Liedtke, ``On $\mu$-kernel construction,'' in \emph{Proc. 15th ACM Symp. Operating Systems Principles (SOSP)}, Copper Mountain, CO, USA, Dec. 1995, pp. 237--250.
+
+\bibitem{stallings2018}
+W. Stallings, \emph{Operating Systems: Internals and Design Principles}, 9th ed. Boston, MA, USA: Pearson, 2018.
+
+\bibitem{dijkstra1968}
+E. W. Dijkstra, ``Cooperating sequential processes,'' in \emph{Programming Languages}, F. Genuys, Ed. London, U.K.: Academic Press, 1968, pp. 43--112.
+
+\bibitem{ieee29148}
+\emph{ISO/IEC/IEEE International Standard -- Systems and software engineering -- Life cycle processes -- Requirements engineering}, ISO/IEC/IEEE 29148:2018(E), 2018.
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Web Minikernel SO 2026-2 | Universidad Distrital Francisco José de Caldas</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+</head>
+<body>
+  <header class="top-shell-header">
+    <div class="brand-block">
+      <h1>Minikernel OS 2026-2: Consola de Simulación Microkernel e IPC</h1>
+      <p>Universidad Distrital Francisco José de Caldas | Ingeniería de Sistemas | Sistemas Operativos</p>
+    </div>
+
+    <div class="clock-controls-bar" role="region" aria-label="Control de Reloj Maestro y Sesión">
+      <div class="metric-chip">
+        <span>Tick:</span>
+        <strong id="metric-clock-tick">0</strong>
+      </div>
+      <div class="metric-chip">
+        <span>Modo CPU:</span>
+        <span id="metric-cpu-mode" class="badge">IDLE</span>
+      </div>
+      <div class="metric-chip">
+        <span>Context Switch:</span>
+        <code id="metric-cs-stats">0 cambios (0 ticks)</code>
+      </div>
+
+      <button type="button" id="btn-clock-toggle" class="btn btn-primary">Iniciar Reloj</button>
+      <button type="button" id="btn-clock-step" class="btn">+1 Tick (Paso)</button>
+
+      <div class="inline-field">
+        <label for="input-clock-freq">Velocidad (ms):</label>
+        <input type="number" id="input-clock-freq" value="700" min="100" max="3000" step="100" style="width: 78px;" />
+      </div>
+
+      <div class="inline-field">
+        <label for="input-cs-ticks">Overhead T_cs:</label>
+        <input type="number" id="input-cs-ticks" value="1" min="0" max="5" step="1" style="width: 58px;" />
+      </div>
+
+      <div class="inline-field">
+        <label for="select-active-user">Sesión:</label>
+        <select id="select-active-user">
+          <option value="root">root (ROOT / Admin)</option>
+          <option value="std_user">std_user (STANDARD)</option>
+          <option value="guest">guest (GUEST / Invitado)</option>
+        </select>
+      </div>
+      <span id="active-role-badge" class="badge role-root">root (ROOT | UID:0)</span>
+
+      <button type="button" id="btn-run-qa-audit" class="btn">Auditoría Anti-Fallas</button>
+      <button type="button" id="btn-export-snapshot" class="btn">Exportar JSON</button>
+    </div>
+  </header>
+
+  <nav class="module-tabs-nav" aria-label="Módulos del Minikernel">
+    <button type="button" class="tab-btn active" data-tab-target="tab-processes">2.1 Administración de Procesos y Banquero</button>
+    <button type="button" class="tab-btn" data-tab-target="tab-memory">2.2 Administración de Memoria y Fragmentación</button>
+    <button type="button" class="tab-btn" data-tab-target="tab-filesystem">2.3 Administración de Archivos (FAT / Inodos)</button>
+    <button type="button" class="tab-btn" data-tab-target="tab-io">2.4 Entrada/Salida (Disco, DMA y Red)</button>
+    <button type="button" class="tab-btn" data-tab-target="tab-security">2.5 Seguridad (Perfiles, Matriz ACL y Logs)</button>
+  </nav>
+
+  <div id="status-toast" class="status-toast ok" role="status" aria-live="polite">
+    Núcleo Minikernel activo. Todos los módulos operan desacoplados en espacio de usuario comunicándose vía IPCMessage.
+  </div>
+
+  <main class="workspace-layout">
+    <!-- CONTENEDOR DE LOS 5 PANELES MODULARES -->
+    <div class="modules-viewport">
+
+      <!-- =====================================================
+           MÓDULO 2.1: ADMINISTRACIÓN DE PROCESOS
+           ===================================================== -->
+      <section id="tab-processes" class="module-panel active" aria-label="Módulo de Administración de Procesos">
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Crear Aplicación / Proceso (Syscall SYS_FORK vía IPC)</h2>
+            <form id="form-create-process" class="form-grid">
+              <div class="form-group">
+                <label for="proc-name">Nombre Programa</label>
+                <input type="text" id="proc-name" value="worker_app" required />
+              </div>
+              <div class="form-group">
+                <label for="proc-type">Tipo Ejecutable</label>
+                <select id="proc-type">
+                  <option value="COMPILED">Compilado (ELF)</option>
+                  <option value="INTERPRETED">Interpretado (Script)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="proc-priority">Prioridad (1=Alta)</label>
+                <input type="number" id="proc-priority" value="2" min="1" max="10" required />
+              </div>
+              <div class="form-group">
+                <label for="proc-burst">Ráfaga CPU (Ticks)</label>
+                <input type="number" id="proc-burst" value="6" min="1" max="30" required />
+              </div>
+              <div class="form-group">
+                <label for="proc-mem">Memoria RAM (KB)</label>
+                <input type="number" id="proc-mem" value="64" min="16" max="512" step="16" required />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Crear Proceso (SYS_FORK)</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Algoritmo de Planificación de CPU Parametrizable</h2>
+            <form id="form-scheduler-config" class="form-grid">
+              <div class="form-group">
+                <label for="sched-algorithm">Política del Planificador</label>
+                <select id="sched-algorithm">
+                  <option value="RR">Round Robin (Con Quantum)</option>
+                  <option value="PRIORITY_PREEMPTIVE">Prioridades Apropiativas (Preemptive)</option>
+                  <option value="SRTF">SJF / SRTF (Menor Tiempo Restante)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sched-quantum">Quantum RR (Ticks)</label>
+                <input type="number" id="sched-quantum" value="3" min="1" max="15" />
+              </div>
+            </form>
+            <p style="margin: 10px 0 0; font-size: 0.8rem; color: var(--text-secondary);">
+              Cada cambio de proceso en CPU invierte explícitamente <strong>Overhead T_cs</strong> ticks guardando y restaurando los registros <code>PC</code>, <code>SP</code> y <code>Acc</code> del PCB.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3col">
+          <div class="card">
+            <h3>Cola de Ejecución (CPU Activa y Registros)</h3>
+            <div id="cpu-running-box"></div>
+          </div>
+          <div class="card">
+            <h3>Cola de Procesos Listos (Ready Queue)</h3>
+            <div id="queue-ready-list"></div>
+          </div>
+          <div class="card">
+            <h3>Cola de Espera de E/S o Eventos (Blocked Queue)</h3>
+            <div id="queue-blocked-list"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Tabla Dinámica de Bloques de Control de Proceso (PCB)</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>Programa</th>
+                  <th>Estado</th>
+                  <th>Reg PC</th>
+                  <th>Reg SP</th>
+                  <th>Reg Acc</th>
+                  <th>Prio</th>
+                  <th>CPU / Burst</th>
+                  <th>Punteros Memoria (Base..Límite)</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="pcb-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Prevención de Deadlock: Algoritmo del Banquero (Dijkstra)</h2>
+            <p style="margin: 0 0 8px; font-size: 0.82rem;">
+              Vector Disponible Actual <strong>Available</strong>: <code id="banker-available-vec"></code>
+            </p>
+            <div id="banker-verdict-box" class="verdict-banner safe"></div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Proceso</th>
+                    <th>Allocation [R1, R2, R3]</th>
+                    <th>Max [R1, R2, R3]</th>
+                    <th>Need = Max - Allocation</th>
+                  </tr>
+                </thead>
+                <tbody id="banker-table-body"></tbody>
+              </table>
+            </div>
+            <form id="form-banker-request" class="form-grid" style="margin-top: 12px;">
+              <div class="form-group">
+                <label for="banker-pid">Proceso Solicitante</label>
+                <select id="banker-pid"></select>
+              </div>
+              <div class="form-group">
+                <label for="banker-r1">Solicitar R1</label>
+                <input type="number" id="banker-r1" value="1" min="0" max="9" />
+              </div>
+              <div class="form-group">
+                <label for="banker-r2">Solicitar R2</label>
+                <input type="number" id="banker-r2" value="0" min="0" max="9" />
+              </div>
+              <div class="form-group">
+                <label for="banker-r3">Solicitar R3</label>
+                <input type="number" id="banker-r3" value="1" min="0" max="9" />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Evaluar Estado Seguro</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Sincronización IPC: Semáforos y Mutex</h2>
+            <div id="semaphores-status-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" class="btn" data-sem-name="MUTEX_PRINTER" data-sem-op="WAIT">wait(MUTEX_PRINTER)</button>
+              <button type="button" class="btn" data-sem-name="MUTEX_PRINTER" data-sem-op="SIGNAL">signal(MUTEX_PRINTER)</button>
+              <button type="button" class="btn" data-sem-name="SEM_DB_POOL" data-sem-op="WAIT">wait(SEM_DB_POOL)</button>
+              <button type="button" class="btn" data-sem-name="SEM_DB_POOL" data-sem-op="SIGNAL">signal(SEM_DB_POOL)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           MÓDULO 2.2: ADMINISTRACIÓN DE MEMORIA
+           ===================================================== -->
+      <section id="tab-memory" class="module-panel" aria-label="Módulo de Administración de Memoria">
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Configuración del Servidor de Memoria (MEMORY_SERVER)</h2>
+            <form id="form-memory-config" class="form-grid">
+              <div class="form-group">
+                <label for="mem-scheme">Esquema de Particionamiento</label>
+                <select id="mem-scheme">
+                  <option value="DYNAMIC_VARIABLE">Memoria Dinámica (Particiones Variables)</option>
+                  <option value="STATIC_FIXED">Memoria Estática (Particiones Fijas: 128, 256, 128, 256, 128 KB)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mem-fit">Algoritmo de Colocación</label>
+                <select id="mem-fit">
+                  <option value="FIRST_FIT">First-Fit (Primer Ajuste)</option>
+                  <option value="BEST_FIT">Best-Fit (Mejor Ajuste)</option>
+                  <option value="WORST_FIT">Worst-Fit (Peor Ajuste)</option>
+                </select>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Asignar Nuevo Bloque de Memoria vía IPC</h2>
+            <form id="form-memory-manual-alloc" class="form-grid">
+              <div class="form-group">
+                <label for="manual-alloc-name">Etiqueta de Proceso</label>
+                <input type="text" id="manual-alloc-name" value="matrix_solver" required />
+              </div>
+              <div class="form-group">
+                <label for="manual-alloc-kb">Tamaño Solicitado (KB)</label>
+                <input type="number" id="manual-alloc-kb" value="80" min="16" max="512" step="8" required />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Solicitar Reserva (SYS_ALLOC)</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Mapa Gráfico de Memoria RAM Física en Tiempo Real (1024 KB Totales)</h2>
+          <div id="memory-visual-map" class="memory-map-bar"></div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Análisis Matemático de Fragmentación Interna y Externa</h2>
+            <table>
+              <tbody>
+                <tr><th>Capacidad Total de RAM</th><td id="frag-total-ram">1024 KB</td></tr>
+                <tr><th>Memoria Útil Ocupada por Procesos</th><td id="frag-used-ram">0 KB</td></tr>
+                <tr><th>Memoria Libre Total</th><td id="frag-free-ram">0 KB</td></tr>
+                <tr><th>Fragmentación Interna Total (Particiones Fijas)</th><td><strong id="frag-internal">0 KB</strong></td></tr>
+                <tr><th>Fragmentación Externa (Particiones Variables)</th><td><strong id="frag-external">0 KB (0%)</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h2>Verificador MMU: Protección Base + Límite y Espacio de Kernel</h2>
+            <p style="margin: 0 0 8px; font-size: 0.8rem; color: var(--text-secondary);">
+              Prueba acceder a una dirección de memoria. Si el proceso invade el Espacio del Kernel (<code>&lt; 128 KB</code>) o sale de su rango <code>[Base, Límite)</code>, se dispara <code>TRAP_SIGSEGV</code>.
+            </p>
+            <form id="form-memory-access-test" class="form-grid">
+              <div class="form-group">
+                <label for="test-mem-pid">Proceso Activo</label>
+                <select id="test-mem-pid"></select>
+              </div>
+              <div class="form-group">
+                <label for="test-mem-addr">Dirección Objetivo (KB)</label>
+                <input type="number" id="test-mem-addr" value="32" min="0" max="1024" required />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-danger">Validar Dirección (MMU)</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           MÓDULO 2.3: ADMINISTRACIÓN DE ARCHIVOS
+           ===================================================== -->
+      <section id="tab-filesystem" class="module-panel" aria-label="Módulo de Administración de Archivos">
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Formateo y Parametrización del Sistema de Archivos (Solo ROOT)</h2>
+            <form id="form-fs-format" class="form-grid">
+              <div class="form-group">
+                <label for="fs-format-type">Tipo de Sistema de Archivos</label>
+                <select id="fs-format-type">
+                  <option value="FAT">Tabla de Asignación (FAT)</option>
+                  <option value="INODES">Basado en Inodos Simulados (UNIX)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="fs-block-size">Tamaño de Bloque / Cluster</label>
+                <select id="fs-block-size">
+                  <option value="512">512 Bytes</option>
+                  <option value="1024" selected>1024 Bytes (1 KB)</option>
+                  <option value="4096">4096 Bytes (4 KB)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-danger">Formatear Volumen (SYS_FORMAT_FS)</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Crear Nuevo Archivo o Directorio (Operación CRUD)</h2>
+            <form id="form-fs-create" class="form-grid">
+              <div class="form-group">
+                <label for="fs-parent-path">Directorio Padre</label>
+                <select id="fs-parent-path"></select>
+              </div>
+              <div class="form-group">
+                <label for="fs-node-name">Nombre</label>
+                <input type="text" id="fs-node-name" placeholder="reporte.txt" required />
+              </div>
+              <div class="form-group">
+                <label for="fs-node-type">Tipo</label>
+                <select id="fs-node-type">
+                  <option value="FILE">Archivo</option>
+                  <option value="DIRECTORY">Directorio</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="fs-node-perms">Permisos rwx</label>
+                <input type="text" id="fs-node-perms" value="rw-r--r--" required />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label for="fs-node-content">Contenido Inicial del Archivo</label>
+                <input type="text" id="fs-node-content" value="Datos almacenados en bloques del Minikernel." />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Crear Nodo (SYS_CREATE_NODE)</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Árbol Jerárquico de Directorios y Archivos</h2>
+            <div id="fs-tree-list" class="fs-tree-container"></div>
+          </div>
+
+          <div class="card">
+            <h2>Inspector de Metadatos y Editor CRUD</h2>
+            <table>
+              <tbody>
+                <tr><th>Ruta Seleccionada</th><td><code id="fs-inspector-path">/etc/kernel.conf</code></td></tr>
+                <tr><th>Tipo de Nodo</th><td id="fs-inspector-type">FILE</td></tr>
+                <tr><th>Propietario</th><td id="fs-inspector-owner">root</td></tr>
+                <tr><th>Tamaño</th><td id="fs-inspector-size">0 bytes</td></tr>
+                <tr><th>Asignación Física</th><td id="fs-inspector-alloc">-</td></tr>
+              </tbody>
+            </table>
+
+            <div class="form-group" style="margin-top: 10px;">
+              <label for="fs-inspector-perms">Permisos rwx</label>
+              <input type="text" id="fs-inspector-perms" value="rw-r--r--" />
+            </div>
+
+            <div class="form-group" style="margin-top: 8px;">
+              <label for="fs-inspector-content">Contenido del Archivo (Lectura / Modificación)</label>
+              <textarea id="fs-inspector-content" rows="3"></textarea>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center;">
+              <button type="button" id="btn-fs-save-content" class="btn btn-primary">Guardar Cambios (SYS_WRITE_FILE)</button>
+              <input type="text" id="fs-rename-input" placeholder="Nuevo nombre..." aria-label="Nuevo nombre para renombrar" style="background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); padding: 7px; border-radius: 4px;" />
+              <button type="button" id="btn-fs-rename" class="btn">Renombrar</button>
+              <button type="button" id="btn-fs-delete" class="btn btn-danger">Eliminar Nodo</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 id="fs-alloc-table-title">Tabla de Asignación de Archivos (FAT / Inodos)</h2>
+          <div id="fs-blocks-grid" class="fs-clusters-grid"></div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           MÓDULO 2.4: ADMINISTRACIÓN DE ENTRADA / SALIDA
+           ===================================================== -->
+      <section id="tab-io" class="module-panel" aria-label="Módulo de Entrada y Salida">
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Parametrización Geométrica de Disco y Algoritmo de Brazo</h2>
+            <form id="form-disk-config" class="form-grid">
+              <div class="form-group">
+                <label for="disk-cylinders">Cilindros</label>
+                <input type="number" id="disk-cylinders" value="200" min="50" max="500" />
+              </div>
+              <div class="form-group">
+                <label for="disk-tracks">Pistas/Cilindro</label>
+                <input type="number" id="disk-tracks" value="8" min="1" max="32" />
+              </div>
+              <div class="form-group">
+                <label for="disk-sectors">Sectores/Pista</label>
+                <input type="number" id="disk-sectors" value="64" min="8" max="256" />
+              </div>
+              <div class="form-group">
+                <label for="disk-rpm">Velocidad (RPM)</label>
+                <input type="number" id="disk-rpm" value="7200" min="0" max="15000" step="600" />
+              </div>
+              <div class="form-group">
+                <label for="disk-algorithm">Algoritmo de Brazo</label>
+                <select id="disk-algorithm">
+                  <option value="FCFS">FCFS (First-Come, First-Served)</option>
+                  <option value="SSTF">SSTF (Shortest Seek Time First)</option>
+                  <option value="SCAN" selected>SCAN (Elevador)</option>
+                  <option value="C-SCAN">C-SCAN (Circular SCAN)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Aplicar Geometría</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Encolar Petición de E/S y Canal DMA (Direct Memory Access)</h2>
+            <form id="form-disk-enqueue" class="form-grid">
+              <div class="form-group">
+                <label for="io-req-cylinder">Cilindro Destino (0-199)</label>
+                <input type="number" id="io-req-cylinder" value="145" min="0" max="199" required />
+              </div>
+              <div class="form-group">
+                <label for="io-req-op">Operación</label>
+                <select id="io-req-op">
+                  <option value="READ">Lectura (DMA -> RAM)</option>
+                  <option value="WRITE">Escritura (RAM -> DMA)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="io-req-block-proc">
+                  <input type="checkbox" id="io-req-block-proc" checked /> Bloquear Proceso hasta IRQ_DMA_DONE
+                </label>
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Encolar Cilindro</button>
+              </div>
+            </form>
+            <div style="margin-top: 10px;">
+              <button type="button" id="btn-exec-disk-batch" class="btn">Ejecutar Lote Completo de Cola de Disco Ahora</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Gráfica en Tiempo Real del Desplazamiento del Brazo de Disco</h2>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.82rem;">
+              <span>Posición Actual: <strong id="io-head-pos">Cilindro 50</strong></span>
+              <span>Distancia Seek Total: <strong id="io-total-seek">0 cilindros</strong></span>
+            </div>
+            <svg id="disk-arm-svg" viewBox="0 0 640 210" width="100%" height="210" style="background: #020617; border: 1px solid var(--border-color); border-radius: 5px;"></svg>
+          </div>
+
+          <div class="card">
+            <h2>Monitor de Controlador DMA y Cola Ordenada según Algoritmo</h2>
+            <div class="metric-chip" style="margin-bottom: 8px; width: 100%; justify-content: space-between;">
+              <span>Estado Canal DMA: <strong id="io-dma-state">IDLE</strong></span>
+              <small id="io-dma-detail"></small>
+            </div>
+            <div id="io-disk-queue-list" style="max-height: 170px; overflow-y: auto;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Interfaces de Red Simuladas: Sockets IPC con Buffers de Entrada/Salida (TX / RX)</h2>
+          <form id="form-net-socket" class="form-grid" style="margin-bottom: 12px;">
+            <div class="form-group">
+              <label for="net-src-socket">Socket Origen</label>
+              <select id="net-src-socket">
+                <option value="SOCK-01">SOCK-01 (PID 101 :8080 -> :9090)</option>
+                <option value="SOCK-02">SOCK-02 (PID 102 :9090 -> :8080)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="net-packet-payload">Payload del Paquete de Red</label>
+              <input type="text" id="net-packet-payload" value="SYN_ACK_TELEMETRY_FRAME" required />
+            </div>
+            <div class="form-group">
+              <button type="submit" class="btn btn-primary">Transmitir Paquete (SYS_NET_SEND)</button>
+            </div>
+          </form>
+          <div id="net-sockets-list" class="grid-2col"></div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           MÓDULO 2.5: ADMINISTRACIÓN DE SEGURIDAD
+           ===================================================== -->
+      <section id="tab-security" class="module-panel" aria-label="Módulo de Administración de Seguridad">
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Autenticación de Usuarios y Perfiles de Seguridad</h2>
+            <form id="form-security-login" class="form-grid">
+              <div class="form-group">
+                <label for="sec-login-user">Usuario / Perfil</label>
+                <select id="sec-login-user">
+                  <option value="root">root (ROOT / Administrador - Clave: root)</option>
+                  <option value="std_user">std_user (Usuario Estándar - Clave: user123)</option>
+                  <option value="guest">guest (Invitado Restringido - Clave: guest)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sec-login-pass">Credencial de Acceso</label>
+                <input type="password" id="sec-login-pass" value="root" required />
+              </div>
+              <div class="form-group">
+                <button type="submit" class="btn btn-primary">Autenticar (SYS_AUTH_LOGIN)</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Pruebas de Intrusión y Verificación de Contención del Minikernel</h2>
+            <p style="margin: 0 0 8px; font-size: 0.8rem; color: var(--text-secondary);">
+              Dispara vectores de ataque simulados para verificar la intercepción del <code>SecurityController</code> y el registro inmutable en <code>SecurityAuditLog</code>:
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" class="btn btn-danger" data-attack-sim="MEMORY_VIOLATION">Simular Violación de Memoria (Kernel Space)</button>
+              <button type="button" class="btn btn-danger" data-attack-sim="PRIVILEGE_ESCALATION">Simular Escalamiento Fallido (setuid 0)</button>
+              <button type="button" class="btn btn-danger" data-attack-sim="UNAUTHORIZED_FS">Simular Violación ACL (/etc/kernel.conf)</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Matriz de Control de Acceso (ACL) Activa en el Reference Monitor</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dominio de Recurso</th>
+                  <th>Descripción de Política</th>
+                  <th>Perfil ROOT (UID 0)</th>
+                  <th>Perfil STANDARD (UID 1000)</th>
+                  <th>Perfil GUEST (UID 2000)</th>
+                </tr>
+              </thead>
+              <tbody id="acl-matrix-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="card">
+            <h2>Terminal Web Interactiva de Comandos (Syscall CLI)</h2>
+            <pre id="web-terminal-output" class="terminal-output"></pre>
+            <form id="form-web-terminal" style="display: flex; gap: 8px;">
+              <label for="terminal-cmd-input" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Comando de terminal</label>
+              <input type="text" id="terminal-cmd-input" placeholder="Escribe un comando (ej: help, ps, mem, ls /, cat /etc/kernel.conf, su guest)..." style="flex: 1; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px;" />
+              <button type="submit" class="btn btn-primary">Ejecutar</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Bitácora Forense Inmutable (SecurityAuditLog con Hash Encadenado)</h2>
+            <div class="table-scroll" style="max-height: 260px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Tick</th>
+                    <th>Sev</th>
+                    <th>Evento</th>
+                    <th>Usuario</th>
+                    <th>Operación</th>
+                    <th>Veredicto</th>
+                    <th>Detalle</th>
+                    <th>Hash</th>
+                  </tr>
+                </thead>
+                <tbody id="security-audit-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- MONITOR EN VIVO DEL BUS IPC -->
+    <aside class="ipc-dock-panel" aria-label="Monitor en Vivo del Bus IPC">
+      <h2 style="margin: 0 0 8px; font-size: 0.95rem; color: var(--accent-primary);">
+        Bus de Mensajes IPC en Vivo (Microkernel)
+      </h2>
+      <p style="margin: 0 0 10px; font-size: 0.76rem; color: var(--text-secondary);">
+        Traza en tiempo real de cada <code>IPCMessage</code> enrutado entre el núcleo y los 5 servidores desacoplados:
+      </p>
+      <div id="ipc-bus-live-stream" class="ipc-stream-list"></div>
+    </aside>
+  </main>
+
+  <!-- MODAL DE AUDITORÍA DE CONSISTENCIA -->
+  <div id="qa-audit-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="qa-modal-title" hidden>
+    <div class="modal-dialog">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 id="qa-modal-title" style="margin: 0; color: var(--accent-primary);">
+          Verificador de Consistencia Arquitectónica ("Cero Fallas de Kernel")
+        </h2>
+        <button type="button" id="btn-close-audit-modal" class="btn">Cerrar</button>
+      </div>
+      <div id="qa-audit-results"></div>
+    </div>
+  </div>
+
+  <footer style="padding: 14px 20px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.78rem; text-align: center;">
+    Proyecto Final Sistemas Operativos 2026-2 | Arquitectura Microkernel Estricta | Universidad Distrital Francisco José de Caldas
+  </footer>
+
+  <script type="module" src="./src/ui/AppController.js"></script>
+</body>
+</html>

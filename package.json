@@ -1,0 +1,10 @@
+{
+  "name": "minikernel-so2026-udfjdc",
+  "version": "1.0.0",
+  "description": "Dise\u00f1o y Simulaci\u00f3n Web de un Minikernel (5 M\u00f3dulos + IPC) - Universidad Distrital Francisco Jos\u00e9 de Caldas",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node ./tests/verify_minikernel.js"
+  }
+}
