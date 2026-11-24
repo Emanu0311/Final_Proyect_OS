@@ -146,6 +146,17 @@
         </div>
 
         <div class="card">
+          <h2>Diagrama de Ejecución (Gantt) y Métricas del Planificador</h2>
+          <div class="gantt-legend">
+            <span><i class="gantt-cell gantt-run"></i> CPU</span>
+            <span><i class="gantt-cell gantt-cs"></i> Cambio de contexto</span>
+            <span><i class="gantt-cell gantt-idle"></i> Ocioso</span>
+          </div>
+          <div id="gantt-chart" class="table-scroll"></div>
+          <div id="sched-metrics" class="sched-metrics"></div>
+        </div>
+
+        <div class="card">
           <h2>Tabla Dinámica de Bloques de Control de Proceso (PCB)</h2>
           <div class="table-scroll">
             <table>
@@ -207,6 +218,7 @@
               </div>
               <div class="form-group">
                 <button type="submit" class="btn btn-primary">Evaluar Estado Seguro</button>
+                <button type="button" id="btn-banker-release" class="btn" style="margin-top: 6px;">Liberar estos recursos</button>
               </div>
             </form>
           </div>
@@ -214,6 +226,10 @@
           <div class="card">
             <h2>Sincronización IPC: Semáforos y Mutex</h2>
             <div id="semaphores-status-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="sem-pid">Proceso que ejecuta la operación</label>
+              <select id="sem-pid"></select>
+            </div>
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
               <button type="button" class="btn" data-sem-name="MUTEX_PRINTER" data-sem-op="WAIT">wait(MUTEX_PRINTER)</button>
               <button type="button" class="btn" data-sem-name="MUTEX_PRINTER" data-sem-op="SIGNAL">signal(MUTEX_PRINTER)</button>

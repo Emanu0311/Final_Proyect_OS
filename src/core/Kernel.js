@@ -107,6 +107,8 @@ export class Kernel {
     this.cpuRegisters = { PC: 0, SP: 0, Acc: 0, IR: 'NOP', PSW: 'USER' };
     this.activePid = null;
     this.pendingNextPid = null;
+    /** Historial por tick para el diagrama de Gantt: { tick, kind: 'RUN'|'CS'|'IDLE', pid } */
+    this.cpuTimeline = [];
 
     this.stateListeners = [];
     this.securityValidatorFn = null;
@@ -197,6 +199,12 @@ export class Kernel {
     return irq;
   }
 
+  _recordTimeline(tick, kind, pid = null, cs = kind === 'CS') {
+    // cs=true marca ticks que el kernel contabiliza como overhead de cambio de contexto
+    this.cpuTimeline.push({ tick, kind, pid, cs });
+    if (this.cpuTimeline.length > 400) this.cpuTimeline.shift();
+  }
+
   setContextSwitchOverhead(ticks) {
     this.contextSwitchCostTicks = Math.max(0, Math.min(10, Number(ticks) || 0));
     this.notifyStateChange();
@@ -230,6 +238,7 @@ export class Kernel {
 
     // 3. Verificar si estamos en medio de un Context Switch (T_cs > 0)
     if (this.remainingContextSwitchTicks > 0) {
+      this._recordTimeline(tick, 'CS', this.pendingNextPid);
       this.cpuMode = 'CONTEXT_SWITCHING';
       this.cpuRegisters.PSW = 'KERNEL_CS';
       this.cpuRegisters.IR = `CTX_SWITCH (${this.remainingContextSwitchTicks} ticks left)`;
@@ -271,6 +280,10 @@ export class Kernel {
     });
 
     const schedRes = schedMsg.response || {};
+    const csOverhead = Boolean(schedRes.contextSwitchRequired) && this.contextSwitchCostTicks > 0;
+    if (schedRes.ranPid) this._recordTimeline(tick, 'RUN', schedRes.ranPid, csOverhead);
+    else if (csOverhead) this._recordTimeline(tick, 'CS', schedRes.nextPid);
+    else this._recordTimeline(tick, 'IDLE', null);
     if (schedRes.contextSwitchRequired) {
       this.totalContextSwitches += 1;
       if (this.contextSwitchCostTicks > 0) {

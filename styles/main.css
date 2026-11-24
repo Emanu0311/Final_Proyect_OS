@@ -633,3 +633,21 @@ code {
   align-items: center;
   gap: 8px;
 }
+
+
+/* ---------- Gantt y métricas del planificador ---------- */
+.gantt-legend { display: flex; gap: 16px; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
+.gantt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.gantt-table { border-collapse: collapse; font-family: var(--font-mono); font-size: 0.72rem; }
+.gantt-table th, .gantt-table td { padding: 0; border: 1px solid var(--border-color); text-align: center; }
+.gantt-table th.gantt-label { padding: 4px 10px; text-align: left; position: sticky; left: 0; background: var(--bg-card); white-space: nowrap; }
+.gantt-table th.gantt-tick { min-width: 22px; color: var(--text-muted); font-weight: normal; }
+.gantt-cell { display: inline-block; width: 100%; min-width: 22px; height: 22px; }
+.gantt-legend .gantt-cell { width: 14px; min-width: 14px; height: 14px; border-radius: 3px; }
+.gantt-run { background: var(--accent-primary); }
+.gantt-cs { background: var(--color-kernel); }
+.gantt-idle { background: var(--bg-input); }
+.sched-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.sched-metric { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
+.sched-metric small { display: block; color: var(--text-muted); }
+.sched-metric strong { font-family: var(--font-mono); color: var(--text-main); }

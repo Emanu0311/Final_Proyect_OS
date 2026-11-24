@@ -32,6 +32,9 @@ export class PCB {
     this.waitingTime = 0;
     this.arrivalTick = arrivalTick;
     this.quantumUsed = 0;
+    this.firstRunTick = null; // para tiempo de respuesta
+    this.finishTick = null; // para tiempo de retorno
+    this.completedNormally = false;
 
     // Registros simulados de CPU
     this.registers = {
@@ -67,7 +70,9 @@ export class Semaphore {
   constructor(name, initialValue = 1) {
     this.name = name;
     this.value = initialValue;
-    this.holderPid = null;
+    this.initialValue = initialValue;
+    this.holderPid = null; // último holder (compatibilidad con la UI)
+    this.holderPids = []; // todos los procesos que hoy poseen el semáforo
     this.waitingPids = [];
   }
 }
@@ -78,11 +83,11 @@ export class BankerAlgorithm {
     this.total = [10, 5, 7];
     this.available = [3, 3, 2];
     this.processes = [
-      { pid: 101, name: 'P101 (sys_daemon)', allocation: [0, 1, 0], max: [7, 5, 3] },
-      { pid: 102, name: 'P102 (net_worker)', allocation: [2, 0, 0], max: [3, 2, 2] },
-      { pid: 103, name: 'P103 (db_engine)', allocation: [3, 0, 2], max: [9, 0, 2] },
-      { pid: 104, name: 'P104 (io_spooler)', allocation: [2, 1, 1], max: [2, 2, 2] },
-      { pid: 105, name: 'P105 (ui_compositor)', allocation: [0, 0, 2], max: [4, 3, 3] }
+      { pid: 101, name: 'P101 (sys_daemon)', allocation: [0, 1, 0], max: [7, 5, 3], demo: true },
+      { pid: 102, name: 'P102 (net_worker)', allocation: [2, 0, 0], max: [3, 2, 2], demo: true },
+      { pid: 103, name: 'P103 (db_engine)', allocation: [3, 0, 2], max: [9, 0, 2], demo: true },
+      { pid: 104, name: 'P104 (io_spooler)', allocation: [2, 1, 1], max: [2, 2, 2], demo: true },
+      { pid: 105, name: 'P105 (ui_compositor)', allocation: [0, 0, 2], max: [4, 3, 3], demo: true }
     ];
     this.lastVerdict = this.evaluateSafety();
   }
@@ -209,6 +214,36 @@ export class BankerAlgorithm {
     return { granted: false, ...safety };
   }
 
+  /**
+   * Liberación voluntaria de recursos: Allocation[i] -= release, Available += release.
+   * Devolver recursos nunca vuelve inseguro un estado seguro, por eso no requiere simulación.
+   */
+  releaseResources(pid, releaseVector) {
+    const proc = this.processes.find((p) => p.pid === Number(pid));
+    if (!proc) {
+      return { released: false, message: `Proceso P${pid} no registrado en matriz del Banquero.` };
+    }
+    const rel = releaseVector.map((x) => Math.max(0, Number(x) || 0));
+    for (let j = 0; j < 3; j++) {
+      if (rel[j] > proc.allocation[j]) {
+        return {
+          released: false,
+          message: `ERR_RELEASE_EXCEEDS_ALLOCATION: P${pid} intentó liberar [${rel.join(', ')}] pero solo tiene Allocation=[${proc.allocation.join(', ')}].`
+        };
+      }
+    }
+    for (let j = 0; j < 3; j++) {
+      proc.allocation[j] -= rel[j];
+    }
+    this.recalculateAvailable();
+    this.lastVerdict = this.evaluateSafety();
+    return {
+      released: true,
+      ...this.lastVerdict,
+      message: `P${pid} liberó [${rel.join(', ')}]. Available=[${this.available.join(', ')}]. ${this.lastVerdict.message}`
+    };
+  }
+
   registerProcess(pcb) {
     if (this.processes.some((p) => p.pid === pcb.pid)) return;
     this.processes.push({
@@ -223,7 +258,7 @@ export class BankerAlgorithm {
 
   releaseProcessResources(pid) {
     const idx = this.processes.findIndex((p) => p.pid === Number(pid));
-    if (idx !== -1 && pid > 105) {
+    if (idx !== -1 && !this.processes[idx].demo) {
       this.processes.splice(idx, 1);
       this.recalculateAvailable();
       this.lastVerdict = this.evaluateSafety();
@@ -237,7 +272,7 @@ export class ProcessManager {
    */
   constructor(kernel) {
     this.kernel = kernel;
-    this.nextPid = 101;
+    this.nextPid = 1; // PIDs reales desde 1; 101-105 quedan reservados a las filas demo del Banquero
     /** @type {Map<number, PCB>} */
     this.pcbTable = new Map();
 
@@ -283,6 +318,9 @@ export class ProcessManager {
 
       case SYSCALL_ACTIONS.SYS_BANKER_REQ:
         return this.banker.requestResources(payload.pid, payload.requestVector);
+
+      case 'BANKER_RELEASE':
+        return this.banker.releaseResources(payload.pid, payload.releaseVector);
 
       case SYSCALL_ACTIONS.SYS_SEM_OP:
         return this.handleSemaphoreOp(payload.semName, payload.op, payload.pid);
@@ -345,6 +383,7 @@ export class ProcessManager {
     pcb.state = 'TERMINATED';
     pcb.blockReason = reason;
     pcb.remainingTime = 0;
+    pcb.finishTick = this.kernel.clock.currentTick;
 
     // Liberar memoria vía IPC
     this.kernel.sendIPC({
@@ -355,6 +394,7 @@ export class ProcessManager {
     });
 
     this.banker.releaseProcessResources(pcb.pid);
+    this._cleanupSemaphores(pcb.pid);
     if (this.kernel.activePid === pcb.pid) {
       this.kernel.activePid = null;
     }
@@ -382,31 +422,70 @@ export class ProcessManager {
     return pcb;
   }
 
+  /**
+   * Libera una unidad del semáforo en nombre de `pid` (SIGNAL o limpieza al terminar el proceso).
+   * Si hay procesos esperando, despierta al primero y le transfiere la posesión.
+   */
+  _releaseSemaphore(sem, pid) {
+    sem.holderPids = sem.holderPids.filter((h) => h !== pid);
+    sem.value += 1;
+    if (sem.waitingPids.length > 0) {
+      const wokenPid = sem.waitingPids.shift();
+      this.wakeupProcess(wokenPid);
+      sem.holderPids.push(wokenPid);
+      sem.holderPid = wokenPid;
+      return { status: 'WOKEN', wokenPid, sem };
+    }
+    sem.holderPid = sem.holderPids[sem.holderPids.length - 1] || null;
+    return { status: 'RELEASED', sem };
+  }
+
+  /** Quita al proceso de todos los semáforos (espera y posesión). Se llama al terminarlo. */
+  _cleanupSemaphores(pid) {
+    for (const sem of this.semaphores.values()) {
+      const waitIdx = sem.waitingPids.indexOf(pid);
+      if (waitIdx !== -1) {
+        sem.waitingPids.splice(waitIdx, 1);
+        sem.value += 1; // el WAIT pendiente ya había restado 1
+      }
+      if (sem.holderPids.includes(pid)) {
+        this._releaseSemaphore(sem, pid);
+      }
+    }
+  }
+
   handleSemaphoreOp(semName, op, pid) {
     const sem = this.semaphores.get(semName);
     if (!sem) throw new Error(`Semáforo ${semName} no existe.`);
+
     const targetPid = Number(pid) || this.kernel.activePid;
+    const pcb = targetPid ? this.pcbTable.get(targetPid) : null;
+    if (!pcb || pcb.state === 'TERMINATED') {
+      return { status: 'NO_PROCESS', message: `No hay un proceso válido para ${op} en ${semName}.`, sem };
+    }
 
     if (op === 'WAIT') {
+      if (pcb.state === 'BLOCKED') {
+        return { status: 'ALREADY_BLOCKED', message: `P${targetPid} ya está bloqueado y no puede ejecutar wait().`, sem };
+      }
       sem.value -= 1;
-      if (sem.value < 0 && targetPid) {
+      if (sem.value < 0) {
         sem.waitingPids.push(targetPid);
         this.blockProcess(targetPid, `Wait en Semáforo ${semName}`);
         return { status: 'BLOCKED', sem };
       }
+      sem.holderPids.push(targetPid);
       sem.holderPid = targetPid;
       return { status: 'ACQUIRED', sem };
-    } else if (op === 'SIGNAL') {
-      sem.value += 1;
-      if (sem.waitingPids.length > 0) {
-        const wokenPid = sem.waitingPids.shift();
-        this.wakeupProcess(wokenPid);
-        sem.holderPid = wokenPid;
-        return { status: 'WOKEN', wokenPid, sem };
-      }
-      sem.holderPid = null;
-      return { status: 'RELEASED', sem };
     }
+
+    if (op === 'SIGNAL') {
+      if (!sem.holderPids.includes(targetPid)) {
+        return { status: 'NOT_HOLDER', message: `P${targetPid} no posee ${semName}; signal() rechazado.`, sem };
+      }
+      return this._releaseSemaphore(sem, targetPid);
+    }
+
     throw new Error(`Operación de semáforo inválida: ${op}`);
   }
 
@@ -443,6 +522,42 @@ export class ProcessManager {
   }
 
   /**
+   * Métricas del planificador (RF-05 / RF-07) calculadas con el historial por tick del kernel.
+   * Retorno = fin - llegada; Respuesta = primera ejecución - llegada; Espera = ticks en cola de listos.
+   */
+  getMetrics() {
+    const timeline = this.kernel.cpuTimeline || [];
+    const total = timeline.length;
+    const run = timeline.filter((t) => t.kind === 'RUN').length;
+    const cs = timeline.filter((t) => t.cs).length;
+    const idle = timeline.filter((t) => t.kind === 'IDLE').length;
+
+    const finished = [...this.pcbTable.values()].filter((p) => p.completedNormally && p.finishTick !== null);
+    const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    const perProcess = finished.map((p) => ({
+      pid: p.pid,
+      name: p.name,
+      turnaround: p.finishTick - p.arrivalTick,
+      waiting: p.waitingTime,
+      response: p.firstRunTick === null ? 0 : p.firstRunTick - p.arrivalTick
+    }));
+
+    return {
+      totalTicks: total,
+      runTicks: run,
+      csTicks: cs,
+      idleTicks: idle,
+      cpuUtilization: total ? (run / total) * 100 : 0,
+      completed: finished.length,
+      throughput: total ? finished.length / total : 0,
+      avgTurnaround: avg(perProcess.map((m) => m.turnaround)),
+      avgWaiting: avg(perProcess.map((m) => m.waiting)),
+      avgResponse: avg(perProcess.map((m) => m.response)),
+      perProcess
+    };
+  }
+
+  /**
    * Evalúa un tick del planificador de CPU y determina si debe ocurrir un Context Switch.
    */
   onClockTick() {
@@ -455,11 +570,15 @@ export class ProcessManager {
     }
 
     // Si hay un proceso en RUNNING, avanzar 1 tick su ejecución
+    let ranPid = null; // PID que usó la CPU en este tick (para el Gantt)
     if (currentRunning) {
       currentRunning.stepExecution();
+      ranPid = currentRunning.pid;
 
       if (currentRunning.remainingTime <= 0) {
-        this.killProcess(currentRunning.pid, 'Ejecución completada exitosamente (Burst=0)');
+        const done = currentRunning;
+        this.killProcess(done.pid, 'Ejecución completada exitosamente (Burst=0)');
+        done.completedNormally = true;
         currentRunning = null;
       }
     }
@@ -472,10 +591,11 @@ export class ProcessManager {
         return {
           contextSwitchRequired: true,
           previousPid: null,
-          nextPid: bestCandidate.pid
+          nextPid: bestCandidate.pid,
+          ranPid
         };
       }
-      return { contextSwitchRequired: false, activePCB: null };
+      return { contextSwitchRequired: false, activePCB: null, ranPid };
     }
 
     // Verificar expropiación (Preemption) según algoritmo activo
@@ -489,7 +609,8 @@ export class ProcessManager {
         return {
           contextSwitchRequired: true,
           previousPid: currentRunning.pid,
-          nextPid: bestCandidate.pid
+          nextPid: bestCandidate.pid,
+          ranPid
         };
       }
       currentRunning.quantumUsed = 0;
@@ -500,7 +621,8 @@ export class ProcessManager {
         return {
           contextSwitchRequired: true,
           previousPid: currentRunning.pid,
-          nextPid: bestCandidate.pid
+          nextPid: bestCandidate.pid,
+          ranPid
         };
       }
     } else if (this.algorithm === 'SRTF' && bestCandidate) {
@@ -510,14 +632,16 @@ export class ProcessManager {
         return {
           contextSwitchRequired: true,
           previousPid: currentRunning.pid,
-          nextPid: bestCandidate.pid
+          nextPid: bestCandidate.pid,
+          ranPid
         };
       }
     }
 
     return {
       contextSwitchRequired: false,
-      activePCB: currentRunning
+      activePCB: currentRunning,
+      ranPid
     };
   }
 
@@ -532,6 +656,7 @@ export class ProcessManager {
     if (nextPCB && nextPCB.state === 'READY') {
       nextPCB.state = 'RUNNING';
       nextPCB.quantumUsed = 0;
+      if (nextPCB.firstRunTick === null) nextPCB.firstRunTick = this.kernel.clock.currentTick;
       return { activePCB: nextPCB };
     }
     return { activePCB: null };

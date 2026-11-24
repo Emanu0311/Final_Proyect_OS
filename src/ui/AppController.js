@@ -37,6 +37,14 @@ export class AppController {
     this.renderAll();
   }
 
+  /** PID de respaldo: el primer proceso vivo (no terminado), o null si no hay ninguno. */
+  _firstLivePid() {
+    for (const pcb of this.processManager.pcbTable.values()) {
+      if (pcb.state !== 'TERMINATED') return pcb.pid;
+    }
+    return null;
+  }
+
   _seedInitialProcesses() {
     const initialApps = [
       { name: 'gcc_compiler', appType: 'COMPILED', priority: 2, burstTime: 8, memorySizeKB: 128 },
@@ -219,6 +227,25 @@ export class AppController {
       });
     }
 
+    const btnBankerRelease = document.getElementById('btn-banker-release');
+    if (btnBankerRelease) {
+      btnBankerRelease.addEventListener('click', () => {
+        const pid = Number(document.getElementById('banker-pid').value);
+        const releaseVector = ['banker-r1', 'banker-r2', 'banker-r3'].map((id) =>
+          Number(document.getElementById(id).value)
+        );
+        const msg = this.kernel.sendIPC({
+          sender: SERVER_ENDPOINTS.KERNEL,
+          receiver: SERVER_ENDPOINTS.PROCESS_SERVER,
+          action: 'BANKER_RELEASE',
+          payload: { pid, releaseVector }
+        });
+        const res = msg.response || {};
+        this._notifyBanner(res.message || 'Liberación procesada.', res.released ? 'ok' : 'error');
+        this.renderAll();
+      });
+    }
+
     // Semáforos
     document.querySelectorAll('[data-sem-op]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -228,10 +255,15 @@ export class AppController {
           sender: SERVER_ENDPOINTS.KERNEL,
           receiver: SERVER_ENDPOINTS.PROCESS_SERVER,
           action: SYSCALL_ACTIONS.SYS_SEM_OP,
-          payload: { semName, op, pid: this.kernel.activePid || 101 }
+          payload: { semName, op, pid: Number(document.getElementById('sem-pid')?.value) || this.kernel.activePid || this._firstLivePid() }
         });
         if (msg.status === 'SUCCESS') {
-          this._notifyBanner(`Semáforo ${semName}: Operación ${op} -> ${msg.response.status}`, 'ok');
+          const r = msg.response;
+          const failed = ['NO_PROCESS', 'ALREADY_BLOCKED', 'NOT_HOLDER'].includes(r.status);
+          this._notifyBanner(
+            failed ? r.message : `Semáforo ${semName}: Operación ${op} -> ${r.status}`,
+            failed ? 'error' : 'ok'
+          );
         }
         this.renderAll();
       });
@@ -452,7 +484,7 @@ export class AppController {
         const cylinder = Number(document.getElementById('io-req-cylinder').value);
         const operation = document.getElementById('io-req-op').value;
         const blockProcess = document.getElementById('io-req-block-proc').checked;
-        const pid = this.kernel.activePid || 101;
+        const pid = this.kernel.activePid || this._firstLivePid();
 
         this.kernel.sendIPC({
           sender: SERVER_ENDPOINTS.KERNEL,
@@ -688,6 +720,53 @@ export class AppController {
     this._renderIPCDock();
   }
 
+  /** Gantt de los últimos 40 ticks (una fila por proceso, más una fila de cambios de contexto) y métricas. */
+  _renderGantt() {
+    const chart = document.getElementById('gantt-chart');
+    const metricsBox = document.getElementById('sched-metrics');
+    if (!chart || !metricsBox) return;
+
+    const WINDOW = 40;
+    const timeline = this.kernel.cpuTimeline.slice(-WINDOW);
+    if (timeline.length === 0) {
+      chart.innerHTML = `<div class="empty-queue">Inicia el reloj para construir el diagrama de ejecución.</div>`;
+    } else {
+      const pids = [...new Set(timeline.filter((t) => t.kind === 'RUN').map((t) => t.pid))].sort((x, y) => x - y);
+      const header = timeline.map((t) => `<th class="gantt-tick">${t.tick}</th>`).join('');
+      const rows = pids
+        .map((pid) => {
+          const name = this.processManager.pcbTable.get(pid)?.name || '';
+          const cells = timeline
+            .map((t) => `<td><i class="gantt-cell ${t.kind === 'RUN' && t.pid === pid ? 'gantt-run' : ''}"></i></td>`)
+            .join('');
+          return `<tr><th class="gantt-label">P${pid} ${name}</th>${cells}</tr>`;
+        })
+        .join('');
+      const csRow = timeline
+        .map((t) => `<td><i class="gantt-cell ${t.cs ? 'gantt-cs' : ''}"></i></td>`)
+        .join('');
+      chart.innerHTML = `<table class="gantt-table">
+        <thead><tr><th class="gantt-label">Tick</th>${header}</tr></thead>
+        <tbody>${rows}<tr><th class="gantt-label">Cambio de contexto</th>${csRow}</tr></tbody>
+      </table>`;
+    }
+
+    const m = this.processManager.getMetrics();
+    const f = (n) => n.toFixed(2);
+    const chips = [
+      ['Utilización de CPU', `${f(m.cpuUtilization)} %`],
+      ['Ticks: CPU / CS / ocioso', `${m.runTicks} / ${m.csTicks} / ${m.idleTicks}`],
+      ['Procesos terminados', String(m.completed)],
+      ['Throughput', `${f(m.throughput)} proc/tick`],
+      ['Espera promedio', `${f(m.avgWaiting)} ticks`],
+      ['Retorno promedio', `${f(m.avgTurnaround)} ticks`],
+      ['Respuesta promedio', `${f(m.avgResponse)} ticks`]
+    ];
+    metricsBox.innerHTML = chips
+      .map(([label, value]) => `<div class="sched-metric"><small>${label}</small><strong>${value}</strong></div>`)
+      .join('');
+  }
+
   _renderTopBar() {
     const tickEl = document.getElementById('metric-clock-tick');
     if (tickEl) tickEl.textContent = String(this.kernel.clock.currentTick);
@@ -808,6 +887,8 @@ export class AppController {
       });
     }
 
+    this._renderGantt();
+
     // Tabla completa de PCBs
     const pcbTbody = document.getElementById('pcb-table-body');
     if (pcbTbody) {
@@ -908,6 +989,16 @@ export class AppController {
     }
 
     // Renderizar Semáforos
+    const semPidSelect = document.getElementById('sem-pid');
+    if (semPidSelect) {
+      const prev = semPidSelect.value;
+      const live = [...this.processManager.pcbTable.values()].filter((p) => p.state !== 'TERMINATED');
+      semPidSelect.innerHTML = live
+        .map((p) => `<option value="${p.pid}">P${p.pid} (${p.name}) - ${p.state}</option>`)
+        .join('');
+      if (live.some((p) => String(p.pid) === prev)) semPidSelect.value = prev;
+    }
+
     const semBox = document.getElementById('semaphores-status-list');
     if (semBox) {
       semBox.innerHTML = [...this.processManager.semaphores.values()]
@@ -916,7 +1007,7 @@ export class AppController {
         <div class="sem-card">
           <strong>${s.name}</strong>
           <span>Valor: <code>${s.value}</code></span>
-          <span>Holder: <code>${s.holderPid ? 'P' + s.holderPid : 'Ninguno'}</code></span>
+          <span>Holders: <code>[${s.holderPids.map((id) => 'P' + id).join(', ') || 'Ninguno'}]</code></span>
           <span>Cola espera: <code>[${s.waitingPids.map((id) => 'P' + id).join(', ') || 'Vacía'}]</code></span>
         </div>`
         )
