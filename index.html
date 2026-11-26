@@ -436,23 +436,43 @@
       <section id="tab-io" class="module-panel" aria-label="Módulo de Entrada y Salida">
         <div class="grid-2col">
           <div class="card">
-            <h2>Parametrización Geométrica de Disco y Algoritmo de Brazo</h2>
+            <h2>Geometría del Disco y Algoritmo de Brazo</h2>
             <form id="form-disk-config" class="form-grid">
               <div class="form-group">
+                <label for="disk-media">Tipo de medio</label>
+                <select id="disk-media">
+                  <option value="HDD" selected>HDD magnético</option>
+                  <option value="SSD">SSD (sin rotación ni seek)</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label for="disk-cylinders">Cilindros</label>
-                <input type="number" id="disk-cylinders" value="200" min="50" max="500" />
+                <input type="number" id="disk-cylinders" value="200" min="50" max="1000" />
               </div>
               <div class="form-group">
                 <label for="disk-tracks">Pistas/Cilindro</label>
-                <input type="number" id="disk-tracks" value="8" min="1" max="32" />
+                <input type="number" id="disk-tracks" value="8" min="1" max="64" />
               </div>
               <div class="form-group">
                 <label for="disk-sectors">Sectores/Pista</label>
-                <input type="number" id="disk-sectors" value="64" min="8" max="256" />
+                <input type="number" id="disk-sectors" value="64" min="8" max="512" />
+              </div>
+              <div class="form-group">
+                <label for="disk-sector-size">Tamaño de sector</label>
+                <select id="disk-sector-size">
+                  <option value="512" selected>512 B</option>
+                  <option value="1024">1 KB</option>
+                  <option value="2048">2 KB</option>
+                  <option value="4096">4 KB</option>
+                </select>
               </div>
               <div class="form-group">
                 <label for="disk-rpm">Velocidad (RPM)</label>
-                <input type="number" id="disk-rpm" value="7200" min="0" max="15000" step="600" />
+                <input type="number" id="disk-rpm" value="7200" min="1000" max="20000" step="600" />
+              </div>
+              <div class="form-group">
+                <label for="disk-seek-ms">Seek por cilindro (ms)</label>
+                <input type="number" id="disk-seek-ms" value="0.1" min="0" max="5" step="0.05" />
               </div>
               <div class="form-group">
                 <label for="disk-algorithm">Algoritmo de Brazo</label>
@@ -470,72 +490,102 @@
           </div>
 
           <div class="card">
-            <h2>Encolar Petición de E/S y Canal DMA (Direct Memory Access)</h2>
+            <h2>Encolar Petición de E/S (DiskRequest) por Canal DMA</h2>
             <form id="form-disk-enqueue" class="form-grid">
               <div class="form-group">
-                <label for="io-req-cylinder">Cilindro Destino (0-199)</label>
+                <label for="io-req-cylinder">Cilindro</label>
                 <input type="number" id="io-req-cylinder" value="145" min="0" max="199" required />
+              </div>
+              <div class="form-group">
+                <label for="io-req-track">Pista (cabeza)</label>
+                <input type="number" id="io-req-track" value="0" min="0" max="7" required />
+              </div>
+              <div class="form-group">
+                <label for="io-req-sector">Sector</label>
+                <input type="number" id="io-req-sector" value="1" min="1" max="64" required />
+              </div>
+              <div class="form-group">
+                <label for="io-req-bytes">Bytes a transferir</label>
+                <input type="number" id="io-req-bytes" value="1024" min="1" max="65536" required />
               </div>
               <div class="form-group">
                 <label for="io-req-op">Operación</label>
                 <select id="io-req-op">
-                  <option value="READ">Lectura (DMA -> RAM)</option>
-                  <option value="WRITE">Escritura (RAM -> DMA)</option>
+                  <option value="READ">Lectura (disco -&gt; RAM)</option>
+                  <option value="WRITE">Escritura (RAM -&gt; disco)</option>
                 </select>
               </div>
               <div class="form-group">
                 <label for="io-req-block-proc">
-                  <input type="checkbox" id="io-req-block-proc" checked /> Bloquear Proceso hasta IRQ_DMA_DONE
+                  <input type="checkbox" id="io-req-block-proc" checked /> Bloquear proceso hasta IRQ_DMA_DONE
                 </label>
               </div>
               <div class="form-group">
-                <button type="submit" class="btn btn-primary">Encolar Cilindro</button>
+                <button type="submit" class="btn btn-primary">Encolar Petición</button>
               </div>
             </form>
             <div style="margin-top: 10px;">
-              <button type="button" id="btn-exec-disk-batch" class="btn">Ejecutar Lote Completo de Cola de Disco Ahora</button>
+              <button type="button" id="btn-exec-disk-batch" class="btn">Atender toda la cola ahora (comparativo)</button>
             </div>
           </div>
         </div>
 
         <div class="grid-2col">
           <div class="card">
-            <h2>Gráfica en Tiempo Real del Desplazamiento del Brazo de Disco</h2>
+            <h2>Recorrido del Brazo de Disco</h2>
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.82rem;">
-              <span>Posición Actual: <strong id="io-head-pos">Cilindro 50</strong></span>
-              <span>Distancia Seek Total: <strong id="io-total-seek">0 cilindros</strong></span>
+              <span>Posición actual: <strong id="io-head-pos">Cilindro 50</strong></span>
+              <span>Seek acumulado: <strong id="io-total-seek">0 cilindros</strong></span>
             </div>
             <svg id="disk-arm-svg" viewBox="0 0 640 210" width="100%" height="210" style="background: #020617; border: 1px solid var(--border-color); border-radius: 5px;"></svg>
           </div>
 
           <div class="card">
-            <h2>Monitor de Controlador DMA y Cola Ordenada según Algoritmo</h2>
+            <h2>Controlador DMA y Cola Ordenada según Algoritmo</h2>
             <div class="metric-chip" style="margin-bottom: 8px; width: 100%; justify-content: space-between;">
-              <span>Estado Canal DMA: <strong id="io-dma-state">IDLE</strong></span>
+              <span>Estado canal DMA: <strong id="io-dma-state">IDLE</strong></span>
               <small id="io-dma-detail"></small>
             </div>
+            <code id="io-dma-registers" style="display: block; margin-bottom: 8px; font-size: 0.78rem;"></code>
             <div id="io-disk-queue-list" style="max-height: 170px; overflow-y: auto;"></div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Interfaces de Red Simuladas: Sockets IPC con Buffers de Entrada/Salida (TX / RX)</h2>
+          <h2>Métricas del Controlador de Disco</h2>
+          <div id="io-disk-metrics" class="sched-metrics"></div>
+        </div>
+
+        <div class="card">
+          <h2>Sockets de Red Simulados con Buffers TX / RX</h2>
           <form id="form-net-socket" class="form-grid" style="margin-bottom: 12px;">
             <div class="form-group">
-              <label for="net-src-socket">Socket Origen</label>
+              <label for="net-src-socket">Socket origen</label>
               <select id="net-src-socket">
-                <option value="SOCK-01">SOCK-01 (PID 101 :8080 -> :9090)</option>
-                <option value="SOCK-02">SOCK-02 (PID 102 :9090 -> :8080)</option>
+                <option value="SOCK-01">SOCK-01 (:8080 -&gt; :9090)</option>
+                <option value="SOCK-02">SOCK-02 (:9090 -&gt; :8080)</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="net-packet-payload">Payload del Paquete de Red</label>
+              <label for="net-packet-payload">Mensaje</label>
               <input type="text" id="net-packet-payload" value="SYN_ACK_TELEMETRY_FRAME" required />
             </div>
             <div class="form-group">
-              <button type="submit" class="btn btn-primary">Transmitir Paquete (SYS_NET_SEND)</button>
+              <button type="submit" class="btn btn-primary">Transmitir (SYS_NET_SEND)</button>
             </div>
           </form>
+          <div class="form-grid" style="margin-bottom: 12px;">
+            <div class="form-group">
+              <label for="net-recv-socket">Socket receptor</label>
+              <select id="net-recv-socket">
+                <option value="SOCK-02">SOCK-02 (:9090)</option>
+                <option value="SOCK-01">SOCK-01 (:8080)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <button type="button" id="btn-net-recv" class="btn">Leer RX (SYS_NET_RECV)</button>
+            </div>
+          </div>
           <div id="net-sockets-list" class="grid-2col"></div>
         </div>
       </section>

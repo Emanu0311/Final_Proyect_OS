@@ -31,10 +31,21 @@ export class AppController {
       'Escribe "help" en la terminal para ver los comandos disponibles.'
     ];
 
+    this._hydrateIOState();
     this._seedInitialProcesses();
     this._bindDOMEvents();
+    window.addEventListener('beforeunload', () => this._persistState());
     this.kernel.subscribe(() => this.renderAll());
     this.renderAll();
+  }
+
+  _hydrateIOState() {
+    const snap = this.persistence.loadSnapshot();
+    if (!snap || !snap.disk || !snap.disk.disk_config) return;
+    this.deviceDriver.restoreState(snap.disk);
+    this.persistence.loadDiskSectors(snap.disk.disk_config.disk_id).then((sectors) => {
+      if (this.deviceDriver.restoreSectors(sectors).loaded) this.renderAll();
+    });
   }
 
   /** PID de respaldo: el primer proceso vivo (no terminado), o null si no hay ninguno. */
@@ -450,29 +461,35 @@ export class AppController {
     }
 
     // --- MÓDULO 2.4: ENTRADA / SALIDA, DISCO, DMA Y RED ---
+    const val = (id) => document.getElementById(id).value;
+    const ioCall = (action, payload = {}) =>
+      this.kernel.sendIPC({ sender: SERVER_ENDPOINTS.KERNEL, receiver: SERVER_ENDPOINTS.IO_SERVER, action, payload });
+    const ioPid = () => this.kernel.activePid || this._firstLivePid();
+
     const formDiskCfg = document.getElementById('form-disk-config');
     if (formDiskCfg) {
       formDiskCfg.addEventListener('submit', (e) => {
         e.preventDefault();
-        const cylinders = Number(document.getElementById('disk-cylinders').value);
-        const tracksPerCylinder = Number(document.getElementById('disk-tracks').value);
-        const sectorsPerTrack = Number(document.getElementById('disk-sectors').value);
-        const rpm = Number(document.getElementById('disk-rpm').value);
-        const algorithm = document.getElementById('disk-algorithm').value;
-
-        const msg = this.kernel.sendIPC({
-          sender: SERVER_ENDPOINTS.KERNEL,
-          receiver: SERVER_ENDPOINTS.IO_SERVER,
-          action: 'SET_DISK_CONFIG',
-          payload: { cylinders, tracksPerCylinder, sectorsPerTrack, rpm, algorithm }
+        const msg = ioCall('SET_DISK_CONFIG', {
+          mediaType: val('disk-media'),
+          cylinders: Number(val('disk-cylinders')),
+          tracksPerCylinder: Number(val('disk-tracks')),
+          sectorsPerTrack: Number(val('disk-sectors')),
+          sectorSize: Number(val('disk-sector-size')),
+          rpm: Number(val('disk-rpm')),
+          seekTimePerCylinderMs: Number(val('disk-seek-ms')),
+          algorithm: val('disk-algorithm')
         });
-
-        this._notifyBanner(
-          msg.status === 'SUCCESS'
-            ? `Controlador de disco actualizado (${cylinders} cilindros, ${rpm} RPM, Algoritmo: ${algorithm}).`
-            : `Denegado: ${msg.errorReason}`,
-          msg.status === 'SUCCESS' ? 'ok' : 'error'
-        );
+        if (msg.status === 'SUCCESS') {
+          const { geometry: g, metrics: m, diskAlgorithm } = msg.response;
+          this._notifyBanner(
+            `Disco ${g.mediaType}: ${(m.capacityBytes / 1048576).toFixed(2)} MB, T_rot ${m.rotationalLatencyMs.toFixed(2)} ms, algoritmo ${diskAlgorithm}.`,
+            'ok'
+          );
+        } else {
+          this._notifyBanner(`Configuración rechazada: ${msg.errorReason}`, 'error');
+        }
+        this._persistState();
         this.renderAll();
       });
     }
@@ -481,18 +498,32 @@ export class AppController {
     if (formAddDiskReq) {
       formAddDiskReq.addEventListener('submit', (e) => {
         e.preventDefault();
-        const cylinder = Number(document.getElementById('io-req-cylinder').value);
-        const operation = document.getElementById('io-req-op').value;
-        const blockProcess = document.getElementById('io-req-block-proc').checked;
-        const pid = this.kernel.activePid || this._firstLivePid();
-
-        this.kernel.sendIPC({
-          sender: SERVER_ENDPOINTS.KERNEL,
-          receiver: SERVER_ENDPOINTS.IO_SERVER,
-          action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
-          payload: { cylinder, operation, path: `/dev/sda_cyl_${cylinder}`, pid, blockProcess }
+        const cylinder = Number(val('io-req-cylinder'));
+        const track = Number(val('io-req-track'));
+        const sector = Number(val('io-req-sector'));
+        const operation = val('io-req-op');
+        const pid = ioPid();
+        const msg = ioCall(SYSCALL_ACTIONS.SYS_IO_DISK_REQ, {
+          cylinder,
+          track,
+          sector,
+          operation,
+          pid,
+          byteCount: Number(val('io-req-bytes')),
+          blockProcess: document.getElementById('io-req-block-proc').checked,
+          path: `/dev/sda@C${cylinder}H${track}S${sector}`,
+          data: operation === 'WRITE' ? `UI_WRITE T${this.kernel.clock.currentTick} P${pid}` : null
         });
-        this._notifyBanner(`Solicitud encolada en Cilindro ${cylinder} (${operation}).`, 'ok');
+        if (msg.status === 'SUCCESS') {
+          const r = msg.response;
+          this._notifyBanner(
+            `${r.requestId} encolada: LBA ${r.lba} (C${r.cylinder} H${r.track} S${r.sector}), ${r.byteCount} B${r.blockedPid ? `. P${r.blockedPid} bloqueado hasta IRQ_DMA_DONE` : ''}.`,
+            'ok'
+          );
+        } else {
+          this._notifyBanner(`Petición rechazada: ${msg.errorReason}`, 'error');
+        }
+        this._persistState();
         this.renderAll();
       });
     }
@@ -500,18 +531,14 @@ export class AppController {
     const btnExecDiskBatch = document.getElementById('btn-exec-disk-batch');
     if (btnExecDiskBatch) {
       btnExecDiskBatch.addEventListener('click', () => {
-        const msg = this.kernel.sendIPC({
-          sender: SERVER_ENDPOINTS.KERNEL,
-          receiver: SERVER_ENDPOINTS.IO_SERVER,
-          action: 'EXEC_DISK_BATCH',
-          payload: {}
-        });
-        if (msg.status === 'SUCCESS') {
-          this._notifyBanner(
-            `Barrido ${this.deviceDriver.diskAlgorithm} ejecutado (${msg.response.servedCount} peticiones, Seek Total: ${msg.response.totalSeekDistance} cilindros).`,
-            'ok'
-          );
-        }
+        const msg = ioCall('EXEC_DISK_BATCH');
+        this._notifyBanner(
+          msg.status === 'SUCCESS'
+            ? `Lote ${this.deviceDriver.diskAlgorithm}: ${msg.response.servedCount} peticiones, seek ${msg.response.totalSeekDistance} cilindros (acumulado ${msg.response.accumulatedSeekDistance}).`
+            : `Lote rechazado: ${msg.errorReason}`,
+          msg.status === 'SUCCESS' ? 'ok' : 'error'
+        );
+        this._persistState();
         this.renderAll();
       });
     }
@@ -520,24 +547,35 @@ export class AppController {
     if (formNetSocket) {
       formNetSocket.addEventListener('submit', (e) => {
         e.preventDefault();
-        const sourceSocketId = document.getElementById('net-src-socket').value;
-        const payload = document.getElementById('net-packet-payload').value.trim() || 'DATA_FRAME_IPC';
-        const msg = this.kernel.sendIPC({
-          sender: SERVER_ENDPOINTS.KERNEL,
-          receiver: SERVER_ENDPOINTS.IO_SERVER,
-          action: SYSCALL_ACTIONS.SYS_NET_SEND,
-          payload: { sourceSocketId, payload }
+        const msg = ioCall(SYSCALL_ACTIONS.SYS_NET_SEND, {
+          sourceSocketId: val('net-src-socket'),
+          payload: val('net-packet-payload').trim() || 'DATA_FRAME_IPC',
+          pid: ioPid()
         });
-        if (msg.status === 'SUCCESS') {
-          this.kernel.sendIPC({
-            sender: SERVER_ENDPOINTS.KERNEL,
-            receiver: SERVER_ENDPOINTS.IO_SERVER,
-            action: SYSCALL_ACTIONS.SYS_NET_RECV,
-            payload: {}
-          });
-          this._notifyBanner(`Paquete ${msg.response.id} transmitido al buffer RX del socket par.`, 'ok');
+        if (msg.status !== 'SUCCESS') {
+          this._notifyBanner(`Error de red: ${msg.errorReason}`, 'error');
+        } else if (msg.response.status === 'BLOCKED') {
+          this._notifyBanner(`TX lleno: P${msg.response.pid} bloqueado hasta IRQ_NET_TX_READY.`, 'error');
         } else {
-          this._notifyBanner(`Error de Red: ${msg.errorReason}`, 'error');
+          const r = msg.response;
+          this._notifyBanner(`${r.id}: ${r.sizeBytes} B en ${r.fragments} paquete(s) en TX de ${r.socketId}. Se entrega al RX en el próximo tick.`, 'ok');
+        }
+        this._persistState();
+        this.renderAll();
+      });
+    }
+
+    const btnNetRecv = document.getElementById('btn-net-recv');
+    if (btnNetRecv) {
+      btnNetRecv.addEventListener('click', () => {
+        const msg = ioCall(SYSCALL_ACTIONS.SYS_NET_RECV, { socketId: val('net-recv-socket'), pid: ioPid(), blocking: false });
+        if (msg.status !== 'SUCCESS') {
+          this._notifyBanner(`recv(): ${msg.errorReason}`, 'error');
+        } else if (msg.response.status === 'EOF') {
+          this._notifyBanner(`recv() en ${msg.response.socketId}: EOF (conexión cerrada).`, 'ok');
+        } else {
+          const r = msg.response;
+          this._notifyBanner(`${r.messageId} recibido en ${r.socketId} (${r.bytes} B, ${r.fragments} fragmento(s)): ${r.payload}`, 'ok');
         }
         this.renderAll();
       });
@@ -676,8 +714,11 @@ export class AppController {
           : `  [ERROR] ${msg.errorReason}`
       );
     } else if (cmd === 'disk') {
+      const d = this.deviceDriver;
+      const g = d.geometry;
       this.terminalHistory.push(
-        `  Algoritmo=${this.deviceDriver.diskAlgorithm} | Cabezal=${this.deviceDriver.currentHeadCylinder} | Seek Acumulado=${this.deviceDriver.totalSeekDistance} cilindros`
+        `  ${g.mediaType} ${g.cylinders}x${g.tracksPerCylinder}x${g.sectorsPerTrack} @${g.sectorSize}B | ${d.diskAlgorithm} | Cabezal=${d.currentHeadCylinder} (${d.armDirection}) | Seek acumulado=${d.totalSeekDistance} | Cola=${d.requestQueue.length}`,
+        `  Seek previsto: ${d.compareAlgorithms().map((c) => `${c.algorithm}=${c.totalSeekDistance}`).join(' | ')}`
       );
     } else if (cmd === 'audit') {
       const recent = this.securityController.auditLogs.slice(0, 4);
@@ -1189,39 +1230,72 @@ export class AppController {
 
   _renderIOPanel() {
     const d = this.deviceDriver;
+    const g = d.geometry;
     const setText = (id, val) => {
       const el = document.getElementById(id);
       if (el) el.textContent = val;
     };
 
-    setText('io-head-pos', `Cilindro ${d.currentHeadCylinder} / ${d.geometry.cylinders - 1}`);
+    setText('io-head-pos', `Cilindro ${d.currentHeadCylinder} / ${g.cylinders - 1} (${d.armDirection})`);
     setText('io-total-seek', `${d.totalSeekDistance} cilindros`);
     setText('io-dma-state', d.dma.state);
-    setText(
-      'io-dma-detail',
-      d.dma.activeTransfer
-        ? `Transfiriendo ${d.dma.activeTransfer.path} -> RAM ${d.dma.activeTransfer.ramTargetAddress} (Sin uso de CPU)`
-        : `Canal libre (${d.dma.completedTransfers} transferencias DMA completadas con interrupción IRQ_DMA_DONE)`
-    );
 
-    const queueOrder = d.computeScheduleOrder();
+    const active = d.activeRequest;
+    let dmaDetail = `Canal libre: ${d.dma.completedTransfers} transferencias con IRQ_DMA_DONE, ${d.dma.faultCount} abortadas con IRQ_DMA_FAULT`;
+    if (active && active.status === 'SEEKING') {
+      dmaDetail = `${active.requestId}: brazo hacia C${active.cylinder} H${active.track} S${active.sector} (${active.accessTimeMs.toFixed(2)} ms, faltan ${d.positioningTicksLeft} tick)`;
+    } else if (active) {
+      dmaDetail = `${active.requestId}: ${active.byteCount - d.dma.byteCountRegister}/${active.byteCount} B ${active.operation === 'READ' ? 'disco -> RAM' : 'RAM -> disco'} sin usar la CPU`;
+    }
+    setText('io-dma-detail', dmaDetail);
+    const regs = d.dma.getRegisters();
+    setText('io-dma-registers', `SAR=${regs.SAR}  DAR=${regs.DAR}  BCR=${regs.BCR} B  CCR=${regs.CCR}`);
+
+    const setMax = (id, max) => {
+      const el = document.getElementById(id);
+      if (el) el.max = String(max);
+    };
+    setMax('io-req-cylinder', g.cylinders - 1);
+    setMax('io-req-track', g.tracksPerCylinder - 1);
+    setMax('io-req-sector', g.sectorsPerTrack);
+
+    const plan = d.computeSchedulePlan();
     const queueEl = document.getElementById('io-disk-queue-list');
     if (queueEl) {
       queueEl.innerHTML =
-        queueOrder.length === 0
-          ? `<div class="empty-queue">Cola de brazo de disco vacía. Agrega cilindros o ejecuta operaciones de archivos.</div>`
-          : queueOrder
+        plan.order.length === 0
+          ? `<div class="empty-queue">Cola de disco vacía. Encola peticiones o ejecuta operaciones de archivos.</div>`
+          : `<div class="queue-meta" style="margin-bottom: 6px;">Seek previsto con ${plan.algorithm}: <strong>${plan.totalSeekDistance}</strong> cilindros</div>` +
+            plan.order
               .map(
                 (req, idx) => `
             <div class="queue-item">
-              <span><strong>#${idx + 1}</strong> Cilindro <code>${req.cylinder}</code> (${req.operation})</span>
-              <small>${req.path} ${req.pid ? `[PID ${req.pid}]` : ''}</small>
+              <span><strong>#${idx + 1}</strong> ${req.requestId} C<code>${req.cylinder}</code> H${req.track} S${req.sector} (${req.operation}, ${req.byteCount} B)</span>
+              <small>LBA ${req.lba} | ${req.path}${req.pid !== null ? ` [PID ${req.pid}]` : ' [sistema]'}${req.blockedPid ? ' | bloquea al proceso' : ''}</small>
             </div>`
               )
               .join('');
     }
 
-    // Dibujar gráfica SVG del recorrido del brazo de disco
+    const metricsBox = document.getElementById('io-disk-metrics');
+    if (metricsBox) {
+      const m = d.getDiskMetrics();
+      const compare = d.compareAlgorithms().map((c) => `${c.algorithm} ${c.totalSeekDistance}`).join(' | ');
+      const chips = [
+        ['Medio', `${g.mediaType} (${g.sectorSize} B/sector)`],
+        ['Capacidad', `${(m.capacityBytes / 1048576).toFixed(2)} MB (${m.totalSectors} sectores)`],
+        ['T_rot promedio', `${m.rotationalLatencyMs.toFixed(2)} ms`],
+        ['Seek de recorrido completo', `${m.fullStrokeSeekMs.toFixed(2)} ms`],
+        ['Atendidas / fallidas', `${m.servedRequests} / ${m.failedRequests}`],
+        ['Latencia media', `${m.avgServiceLatencyTicks.toFixed(2)} ticks`],
+        ['Sectores escritos', String(m.writtenSectors)],
+        ['Seek previsto por algoritmo', compare || 'Cola vacía']
+      ];
+      metricsBox.innerHTML = chips
+        .map(([label, value]) => `<div class="sched-metric"><small>${label}</small><strong>${value}</strong></div>`)
+        .join('');
+    }
+
     const svg = document.getElementById('disk-arm-svg');
     if (svg) {
       const w = 640;
@@ -1230,36 +1304,30 @@ export class AppController {
       const padR = 25;
       const padT = 20;
       const padB = 30;
-      const maxCyl = Math.max(1, d.geometry.cylinders - 1);
+      const maxCyl = Math.max(1, g.cylinders - 1);
       const pts = d.headHistory;
-
-      const coords = pts.map((pt, i) => {
-        const x = padL + (pts.length <= 1 ? 0 : (i / (pts.length - 1)) * (w - padL - padR));
-        const y = padT + (1 - pt.cylinder / maxCyl) * (h - padT - padB);
-        return { x, y, ...pt };
-      });
-
+      const coords = pts.map((pt, i) => ({
+        x: padL + (pts.length <= 1 ? 0 : (i / (pts.length - 1)) * (w - padL - padR)),
+        y: padT + (1 - pt.cylinder / maxCyl) * (h - padT - padB),
+        ...pt
+      }));
       const polylinePoints = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
       const circles = coords
         .map(
           (c) => `
-          <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4.5" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5" />
-          <text x="${c.x.toFixed(1)}" y="${(c.y - 8).toFixed(1)}" text-anchor="middle" fill="#e2e8f0" font-size="10">${c.cylinder}</text>
-        `
+          <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4.5" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5"><title>${c.path}</title></circle>
+          <text x="${c.x.toFixed(1)}" y="${(c.y - 8).toFixed(1)}" text-anchor="middle" fill="#e2e8f0" font-size="10">${c.cylinder}</text>`
         )
         .join('');
-
       svg.innerHTML = `
         <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h - padB}" stroke="#334155" stroke-width="1" />
         <line x1="${padL}" y1="${h - padB}" x2="${w - padR}" y2="${h - padB}" stroke="#334155" stroke-width="1" />
         <text x="8" y="${padT + 8}" fill="#94a3b8" font-size="10">Cil ${maxCyl}</text>
         <text x="8" y="${h - padB}" fill="#94a3b8" font-size="10">Cil 0</text>
         <polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="${polylinePoints}" />
-        ${circles}
-      `;
+        ${circles}`;
     }
 
-    // Renderizar Sockets de Red Simulados
     const sockContainer = document.getElementById('net-sockets-list');
     if (sockContainer) {
       sockContainer.innerHTML = d.sockets
@@ -1267,12 +1335,13 @@ export class AppController {
           (s) => `
         <div class="socket-card">
           <div class="socket-head">
-            <strong>${s.id} (Puerto Local :${s.localPort} -> Remoto :${s.remotePort})</strong>
-            <span class="badge">PID ${s.ownerPid}</span>
+            <strong>${s.id} :${s.localPort} -> :${s.remotePort ?? '-'} (${s.protocol}, ${s.state})</strong>
+            <span class="badge">PID ${s.ownerPid ?? '-'}</span>
           </div>
           <div class="socket-buffers">
-            <div><small>Buffer TX Pendiente (${s.txBuffer.length}/${s.capacity}):</small> <code>${s.txBuffer.map((p) => p.payload).join(', ') || 'Vacío'}</code></div>
-            <div><small>Buffer RX Recibido (${s.rxBuffer.length}/${s.capacity}):</small> <code>${s.rxBuffer.map((p) => `[${p.id}] ${p.payload}`).join(' | ') || 'Sin paquetes'}</code></div>
+            <div><small>TX (${s.txBuffer.length}/${s.capacity} paq, ${s.txUsedBytes}/${s.bufferCapacityBytes} B):</small> <code>${s.txBuffer.map((p) => `[${p.id} ${p.status}] ${p.payload}`).join(' | ') || 'Vacío'}</code></div>
+            <div><small>RX (${s.rxBuffer.length}/${s.capacity} paq, ${s.rxUsedBytes}/${s.bufferCapacityBytes} B):</small> <code>${s.rxBuffer.map((p) => `[${p.id} seq ${p.seqNumber}] ${p.payload}`).join(' | ') || 'Sin paquetes'}</code></div>
+            <div><small>Enviados ${s.totalBytesSent} B | Recibidos ${s.totalBytesReceived} B | Descartados ${s.droppedPacketsCount} | MTU ${s.mtu} B</small></div>
           </div>
         </div>`
         )

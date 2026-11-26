@@ -135,6 +135,9 @@ export class MemoryManager {
       case SYSCALL_ACTIONS.SYS_MEM_ACCESS:
         return this.validateMemoryAccess(payload.pid, payload.targetAddressKB);
 
+      case 'MEM_QUERY_REGION':
+        return this.getProcessRegion(payload.pid);
+
       default:
         throw new Error(`Acción desconocida en MEMORY_SERVER: ${action}`);
     }
@@ -296,6 +299,19 @@ export class MemoryManager {
     }
 
     return { valid: true, partitionId: ownedPart.id, addressKB: addr };
+  }
+
+  getProcessRegion(pid) {
+    const part = this.partitions.find((p) => !p.isKernel && p.allocatedPid === Number(pid));
+    if (!part) return null;
+    return {
+      pid: Number(pid),
+      partitionId: part.id,
+      baseKB: part.baseAddress,
+      sizeKB: part.sizeKB,
+      baseBytes: part.baseAddress * 1024,
+      limitBytes: (part.baseAddress + part.sizeKB) * 1024
+    };
   }
 
   calculateFragmentation() {

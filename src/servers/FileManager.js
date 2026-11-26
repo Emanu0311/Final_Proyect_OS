@@ -253,19 +253,7 @@ export class FileManager {
       firstBlock = alloc.firstBlock;
       inodeNumber = alloc.inodeNumber;
 
-      if (!skipDiskIO && this.kernel.ipcBus.handlers.has(SERVER_ENDPOINTS.IO_SERVER)) {
-        this.kernel.sendIPC({
-          sender: SERVER_ENDPOINTS.FS_SERVER,
-          receiver: SERVER_ENDPOINTS.IO_SERVER,
-          action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
-          payload: {
-            operation: 'WRITE',
-            cylinder: (firstBlock * 7) % 200,
-            path: fullPath,
-            sizeBytes
-          }
-        });
-      }
+      if (!skipDiskIO) this._issueBlockIO('WRITE', fullPath, alloc.allocatedBlocks, content);
     }
 
     const node = new FSNode({
@@ -292,19 +280,7 @@ export class FileManager {
     if (!node) throw new Error(`ENOENT: Archivo no encontrado: ${path}`);
     if (node.type === 'DIRECTORY') throw new Error(`EISDIR: ${path} es un directorio.`);
 
-    if (this.kernel.ipcBus.handlers.has(SERVER_ENDPOINTS.IO_SERVER)) {
-      this.kernel.sendIPC({
-        sender: SERVER_ENDPOINTS.FS_SERVER,
-        receiver: SERVER_ENDPOINTS.IO_SERVER,
-        action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
-        payload: {
-          operation: 'READ',
-          cylinder: ((node.firstBlock || 3) * 11) % 200,
-          path: node.path,
-          sizeBytes: node.sizeBytes
-        }
-      });
-    }
+    this._issueBlockIO('READ', node.path, this._blockChain(node.firstBlock), '', node.sizeBytes);
 
     return node;
   }
@@ -326,19 +302,7 @@ export class FileManager {
     node.inodeNumber = alloc.inodeNumber;
     node.updatedAt = new Date().toISOString();
 
-    if (this.kernel.ipcBus.handlers.has(SERVER_ENDPOINTS.IO_SERVER)) {
-      this.kernel.sendIPC({
-        sender: SERVER_ENDPOINTS.FS_SERVER,
-        receiver: SERVER_ENDPOINTS.IO_SERVER,
-        action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
-        payload: {
-          operation: 'WRITE',
-          cylinder: ((node.firstBlock || 5) * 13) % 200,
-          path: node.path,
-          sizeBytes: node.sizeBytes
-        }
-      });
-    }
+    this._issueBlockIO('WRITE', node.path, alloc.allocatedBlocks, newContent);
 
     return node;
   }
@@ -396,5 +360,38 @@ export class FileManager {
     this._freeBlocksOfPath(path);
     this.nodes.delete(path);
     return { deletedPath: path };
+  }
+
+  _blockChain(firstBlock) {
+    const chain = [];
+    let current = firstBlock;
+    while (current !== null && current !== undefined && current >= 0 && chain.length < this.totalBlocks) {
+      chain.push(current);
+      current = this.fatTable[current] ? this.fatTable[current].nextBlock : null;
+    }
+    return chain;
+  }
+
+  /** RF-19/RF-20: el FS solo envía bloques lógicos; la traducción a LBA y CHS ocurre en el DeviceDriver. */
+  _issueBlockIO(operation, path, blocks, content = '', sizeBytes = null) {
+    if (!this.kernel.ipcBus.handlers.has(SERVER_ENDPOINTS.IO_SERVER)) return;
+    const bytes = new TextEncoder().encode(content);
+    const totalBytes = sizeBytes ?? bytes.length;
+    blocks.forEach((logicalBlock, i) => {
+      const offset = i * this.blockSizeBytes;
+      this.kernel.sendIPC({
+        sender: SERVER_ENDPOINTS.FS_SERVER,
+        receiver: SERVER_ENDPOINTS.IO_SERVER,
+        action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
+        payload: {
+          operation,
+          path,
+          logicalBlock,
+          blockSizeBytes: this.blockSizeBytes,
+          byteCount: Math.max(1, Math.min(this.blockSizeBytes, totalBytes - offset)),
+          data: operation === 'WRITE' ? Array.from(bytes.slice(offset, offset + this.blockSizeBytes)) : null
+        }
+      });
+    });
   }
 }
