@@ -37,6 +37,9 @@ export class MemoryPartition {
 
 export class FragmentationReport {
   constructor({
+    timestampTick = 0,
+    activeScheme = 'DYNAMIC_VARIABLE',
+    activeFitPolicy = 'FIRST_FIT',
     totalMemoryKB,
     kernelReservedKB,
     usedByProcessesKB,
@@ -44,8 +47,14 @@ export class FragmentationReport {
     totalFreeKB,
     largestFreeBlockKB,
     externalFragmentationKB,
-    externalFragmentationPercent
+    externalFragmentationPercent,
+    hasCriticalExternalFragmentation = false,
+    lastFailedReqKB = 0,
+    memoryUtilizationPercent = 0
   }) {
+    this.timestampTick = timestampTick;
+    this.activeScheme = activeScheme;
+    this.activeFitPolicy = activeFitPolicy;
     this.totalMemoryKB = totalMemoryKB;
     this.kernelReservedKB = kernelReservedKB;
     this.usedByProcessesKB = usedByProcessesKB;
@@ -54,6 +63,10 @@ export class FragmentationReport {
     this.largestFreeBlockKB = largestFreeBlockKB;
     this.externalFragmentationKB = externalFragmentationKB;
     this.externalFragmentationPercent = externalFragmentationPercent;
+    this.hasCriticalExternalFragmentation = hasCriticalExternalFragmentation;
+    this.lastFailedReqKB = lastFailedReqKB;
+    this.memoryUtilizationPercent = memoryUtilizationPercent;
+    Object.freeze(this); // Objeto inmutable (RF-16)
   }
 }
 
@@ -72,6 +85,8 @@ export class MemoryManager {
     /** @type {MemoryPartition[]} */
     this.partitions = [];
     this.nextPartitionSeq = 1;
+    /** Último tamaño solicitado que falló por falta de memoria (para la condición crítica de RF-16). */
+    this.lastFailedReqKB = 0;
 
     this.initializeMemoryLayout();
     this.kernel.registerServer(SERVER_ENDPOINTS.MEMORY_SERVER, (msg) => this.handleIPC(msg));
@@ -80,6 +95,7 @@ export class MemoryManager {
   initializeMemoryLayout() {
     this.partitions = [];
     this.nextPartitionSeq = 1;
+    this.lastFailedReqKB = 0;
 
     // Partición 0: Reservada estrictamente para el Microkernel
     this.partitions.push(
@@ -135,13 +151,29 @@ export class MemoryManager {
       case SYSCALL_ACTIONS.SYS_MEM_ACCESS:
         return this.validateMemoryAccess(payload.pid, payload.targetAddressKB);
 
+      case 'IPC_MEM_STATUS_REPORT':
+        return this.getStatusReport();
+
       default:
         throw new Error(`Acción desconocida en MEMORY_SERVER: ${action}`);
     }
   }
 
+  /** Publica al monitor de la UI el estado generado por el servidor de memoria. */
+  publishStatusReport() {
+    return this.kernel.sendIPC({
+      sender: SERVER_ENDPOINTS.MEMORY_SERVER,
+      receiver: SERVER_ENDPOINTS.UI_MONITOR,
+      action: 'IPC_MEM_STATUS_REPORT',
+      payload: this.getStatusReport()
+    });
+  }
+
   reconfigureMemory(scheme, fitAlgorithm) {
     const modeChanged = scheme && scheme !== this.scheme;
+    if (modeChanged && this.partitions.some((p) => !p.isKernel && p.isOccupied)) {
+      throw new Error('ERR_SCHEME_CHANGE_BLOCKED: Hay procesos con memoria asignada; termínalos antes de cambiar el esquema.');
+    }
     if (scheme && ['STATIC_FIXED', 'DYNAMIC_VARIABLE'].includes(scheme)) {
       this.scheme = scheme;
     }
@@ -151,29 +183,45 @@ export class MemoryManager {
     if (modeChanged) {
       this.initializeMemoryLayout();
     }
-    return {
+    const result = {
       scheme: this.scheme,
       fitAlgorithm: this.fitAlgorithm,
       fragmentation: this.calculateFragmentation()
     };
+    this.publishStatusReport();
+    return result;
   }
 
   allocateMemory(pid, processName, sizeKB) {
-    const reqKB = Math.max(4, Number(sizeKB) || 32);
+    const rawKB = Number(sizeKB);
+    if (!Number.isFinite(rawKB) || rawKB <= 0) {
+      return {
+        allocated: false,
+        reason: `ERR_INVALID_SIZE: el tamaño solicitado (${sizeKB}) debe ser un número mayor a 0 KB.`,
+        fragmentation: this.calculateFragmentation()
+      };
+    }
+    const reqKB = Math.max(4, Math.ceil(rawKB));
+    if (this.partitions.some((p) => !p.isKernel && p.allocatedPid === Number(pid))) {
+      return { allocated: false, reason: `ERR_PID_ALREADY_ALLOCATED: P${pid} ya posee una partición.`, fragmentation: this.calculateFragmentation() };
+    }
     const candidates = this.partitions
       .map((part, index) => ({ part, index }))
       .filter(({ part }) => !part.isKernel && !part.isOccupied && part.sizeKB >= reqKB);
 
     if (candidates.length === 0) {
+      this.lastFailedReqKB = reqKB;
       const frag = this.calculateFragmentation();
       const isExtFrag = frag.totalFreeKB >= reqKB;
-      return {
+      const result = {
         allocated: false,
         reason: isExtFrag
           ? `ERR_EXTERNAL_FRAGMENTATION: Hay ${frag.totalFreeKB} KB libres totales, pero el hueco contiguo mayor es de ${frag.largestFreeBlockKB} KB (< ${reqKB} KB solicitados).`
           : `ERR_OUT_OF_MEMORY: Memoria insuficiente para ${reqKB} KB (Libre total: ${frag.totalFreeKB} KB).`,
         fragmentation: frag
       };
+      this.publishStatusReport();
+      return result;
     }
 
     // Selección del bloque según First-Fit, Best-Fit o Worst-Fit
@@ -194,11 +242,15 @@ export class MemoryManager {
       targetPart.allocatedPid = pid;
       targetPart.processName = processName;
       targetPart.requestedSizeKB = reqKB;
-      return {
+      this.lastFailedReqKB = 0;
+      this.verifyInvariants();
+      const result = {
         allocated: true,
         partition: targetPart,
         fragmentation: this.calculateFragmentation()
       };
+      this.publishStatusReport();
+      return result;
     }
 
     // Esquema Dinámico (Particiones Variables): dividir bloque (Splitting) si sobra espacio
@@ -219,11 +271,15 @@ export class MemoryManager {
       this.partitions.splice(chosen.index + 1, 0, freeHole);
     }
 
-    return {
+    this.lastFailedReqKB = 0;
+    this.verifyInvariants();
+    const result = {
       allocated: true,
       partition: targetPart,
       fragmentation: this.calculateFragmentation()
     };
+    this.publishStatusReport();
+    return result;
   }
 
   freeMemory(pid) {
@@ -241,11 +297,15 @@ export class MemoryManager {
     if (freed && this.scheme === 'DYNAMIC_VARIABLE') {
       this.coalesceFreeBlocks();
     }
+    if (freed) this.lastFailedReqKB = 0;
+    this.verifyInvariants();
 
-    return {
+    const result = {
       freed,
       fragmentation: this.calculateFragmentation()
     };
+    if (freed) this.publishStatusReport();
+    return result;
   }
 
   coalesceFreeBlocks() {
@@ -298,8 +358,58 @@ export class MemoryManager {
     return { valid: true, partitionId: ownedPart.id, addressKB: addr };
   }
 
+  /**
+   * Invariantes de RNF-06: suma de particiones == RAM total, sin huecos ni solapes,
+   * tamaños positivos y ningún PID con más de una partición.
+   */
+  verifyInvariants() {
+    const sum = this.partitions.reduce((acc, p) => acc + p.sizeKB, 0);
+    if (sum !== this.totalMemoryKB) {
+      throw new Error(`KERNEL_PANIC_INVARIANT_VIOLATION: suma de particiones ${sum} KB != RAM total ${this.totalMemoryKB} KB.`);
+    }
+    const seenPids = new Set();
+    for (let i = 0; i < this.partitions.length; i++) {
+      const part = this.partitions[i];
+      if (part.sizeKB <= 0) {
+        throw new Error(`KERNEL_PANIC_INVARIANT_VIOLATION: ${part.id} tiene tamaño ${part.sizeKB} KB.`);
+      }
+      if (i > 0) {
+        const prev = this.partitions[i - 1];
+        if (prev.baseAddress + prev.sizeKB !== part.baseAddress) {
+          throw new Error(`KERNEL_PANIC_INVARIANT_VIOLATION: hueco o solape entre ${prev.id} y ${part.id}.`);
+        }
+      }
+      if (!part.isKernel && part.isOccupied) {
+        if (seenPids.has(part.allocatedPid)) {
+          throw new Error(`KERNEL_PANIC_INVARIANT_VIOLATION: PID ${part.allocatedPid} posee más de una partición.`);
+        }
+        seenPids.add(part.allocatedPid);
+      }
+    }
+    return true;
+  }
+
+  /** Reporte de solo lectura publicado por IPC (IPC_MEM_STATUS_REPORT). */
+  getStatusReport() {
+    return {
+      fragmentation: this.calculateFragmentation(),
+      partitions: this.partitions.map((p) => ({
+        id: p.id,
+        baseAddress: p.baseAddress,
+        sizeKB: p.sizeKB,
+        isKernel: p.isKernel,
+        isOccupied: p.isOccupied,
+        allocatedPid: p.allocatedPid,
+        processName: p.processName,
+        requestedSizeKB: p.requestedSizeKB,
+        internalFragmentationKB: p.internalFragmentationKB
+      }))
+    };
+  }
+
   calculateFragmentation() {
     let usedByProcessesKB = 0;
+    let allocatedPartitionsKB = 0;
     let internalFragmentationKB = 0;
     let totalFreeKB = 0;
     let largestFreeBlockKB = 0;
@@ -308,6 +418,7 @@ export class MemoryManager {
       if (part.isKernel) continue;
       if (part.isOccupied) {
         usedByProcessesKB += part.requestedSizeKB;
+        allocatedPartitionsKB += part.sizeKB;
         internalFragmentationKB += part.internalFragmentationKB;
       } else {
         totalFreeKB += part.sizeKB;
@@ -317,13 +428,22 @@ export class MemoryManager {
       }
     }
 
-    const externalFragmentationKB =
-      this.scheme === 'DYNAMIC_VARIABLE' ? Math.max(0, totalFreeKB - largestFreeBlockKB) : 0;
+    // Condición crítica (RF-16): hay memoria libre suficiente en total, pero no contigua.
+    const hasCritical =
+      this.lastFailedReqKB > 0 && totalFreeKB >= this.lastFailedReqKB && largestFreeBlockKB < this.lastFailedReqKB;
+
+    // RF-16 define FE como memoria libre total menos el mayor bloque contiguo.
+    const externalFragmentationKB = Math.max(0, totalFreeKB - largestFreeBlockKB);
+
     const userSpaceKB = this.totalMemoryKB - this.kernelReservedKB;
     const externalFragmentationPercent =
-      totalFreeKB > 0 ? Number(((externalFragmentationKB / userSpaceKB) * 100).toFixed(1)) : 0;
+      externalFragmentationKB > 0 ? Number(((externalFragmentationKB / userSpaceKB) * 100).toFixed(1)) : 0;
+    const memoryUtilizationPercent = Number(((allocatedPartitionsKB / userSpaceKB) * 100).toFixed(1));
 
     return new FragmentationReport({
+      timestampTick: this.kernel.clock ? this.kernel.clock.currentTick : 0,
+      activeScheme: this.scheme,
+      activeFitPolicy: this.fitAlgorithm,
       totalMemoryKB: this.totalMemoryKB,
       kernelReservedKB: this.kernelReservedKB,
       usedByProcessesKB,
@@ -331,7 +451,10 @@ export class MemoryManager {
       totalFreeKB,
       largestFreeBlockKB,
       externalFragmentationKB,
-      externalFragmentationPercent
+      externalFragmentationPercent,
+      hasCriticalExternalFragmentation: hasCritical,
+      lastFailedReqKB: this.lastFailedReqKB,
+      memoryUtilizationPercent
     });
   }
 }

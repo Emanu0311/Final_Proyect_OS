@@ -23,6 +23,18 @@ export class AppController {
     this.processManager = new ProcessManager(this.kernel);
     this.persistence = new PersistenceStore();
 
+    this.latestMemoryStatusReport = this.memoryManager.getStatusReport();
+    this.kernel.registerServer(SERVER_ENDPOINTS.UI_MONITOR, (msg) => {
+      if (msg.action === 'IPC_MEM_STATUS_REPORT') {
+        this.latestMemoryStatusReport = msg.payload;
+        return { received: true };
+      }
+      throw new Error(`Acción desconocida en UI_MONITOR: ${msg.action}`);
+    });
+    this.kernel.ipcBus.subscribe((msg) => {
+      if (msg.receiver === SERVER_ENDPOINTS.UI_MONITOR && msg.action === 'IPC_MEM_STATUS_REPORT') this.renderAll();
+    });
+
     this.activeTab = 'tab-processes';
     this.selectedFilePath = '/etc/kernel.conf';
     this.terminalHistory = [
@@ -613,7 +625,7 @@ export class AppController {
         );
       }
     } else if (cmd === 'mem') {
-      const f = this.memoryManager.calculateFragmentation();
+      const f = this.latestMemoryStatusReport.fragmentation;
       this.terminalHistory.push(
         `  Esquema=${this.memoryManager.scheme} (${this.memoryManager.fitAlgorithm}) | Usado=${f.usedByProcessesKB}KB | Libre=${f.totalFreeKB}KB | Frag.Int=${f.internalFragmentationKB}KB | Frag.Ext=${f.externalFragmentationKB}KB`
       );
@@ -1016,7 +1028,7 @@ export class AppController {
   }
 
   _renderMemoryPanel() {
-    const frag = this.memoryManager.calculateFragmentation();
+    const frag = this.latestMemoryStatusReport.fragmentation;
     const mapContainer = document.getElementById('memory-visual-map');
     if (mapContainer) {
       mapContainer.innerHTML = this.memoryManager.partitions
@@ -1350,7 +1362,7 @@ export class AppController {
     const body = document.getElementById('qa-audit-results');
     if (!modal || !body) return;
 
-    const frag = this.memoryManager.calculateFragmentation();
+    const frag = this.latestMemoryStatusReport.fragmentation;
     const sumPartitions = this.memoryManager.partitions.reduce((acc, p) => acc + p.sizeKB, 0);
     const bankerSafety = this.processManager.banker.evaluateSafety();
 

@@ -61,7 +61,12 @@ assert.equal(unsafeReq.granted, false);
 const fragDyn = memory.calculateFragmentation();
 assert.equal(fragDyn.internalFragmentationKB, 0, 'En memoria dinámica la fragmentación interna es 0 KB');
 
+// Para cambiar de esquema no debe haber procesos con memoria asignada
+for (const part of memory.partitions.filter((p) => !p.isKernel && p.isOccupied)) memory.freeMemory(part.allocatedPid);
+assert.throws(() => { memory.allocateMemory(5001, 'x', 64); memory.reconfigureMemory('STATIC_FIXED'); }, /ERR_SCHEME_CHANGE_BLOCKED/);
+memory.freeMemory(5001);
 memory.reconfigureMemory('STATIC_FIXED', 'BEST_FIT');
+memory.verifyInvariants();
 const allocFixed = memory.allocateMemory(999, 'fixed_test', 100);
 assert.equal(allocFixed.allocated, true);
 assert.ok(allocFixed.fragmentation.internalFragmentationKB > 0, 'En particiones fijas debe reportar fragmentación interna');
