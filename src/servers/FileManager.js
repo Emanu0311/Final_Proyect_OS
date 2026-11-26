@@ -164,13 +164,28 @@ export class FileManager {
     throw new Error(`EINVAL: Permisos inválidos "${perms}". Use formato rwxr-xr-x u octal (ej. 644).`);
   }
 
-  /** ROOT todo; el propietario usa los bits de usuario; los demás usan los bits "otros". */
+  /**
+   * Evalúa la ACL rwx del nodo para el usuario activo (RF-28).
+   * ROOT tiene override auditado; el propietario usa los bits 0-2 y los demás los bits 6-8.
+   * @param {Object} node - FSNode con owner y permissions 'rwxrwxrwx'.
+   * @param {Object} auth - Contexto de seguridad del solicitante.
+   * @param {'r'|'w'|'x'} mode - Permiso requerido.
+   * @returns {boolean} true si la operación está autorizada.
+   */
   _canAccess(node, auth, mode) {
     if (!auth || auth.role === 'ROOT') return true;
     const bits = node.owner === auth.username ? node.permissions.slice(0, 3) : node.permissions.slice(6, 9);
     return bits['rwx'.indexOf(mode)] !== '-';
   }
 
+  /**
+   * Lanza EACCES si el contexto `auth` no posee el permiso `mode` sobre el nodo.
+   * @param {Object} node - FSNode objetivo.
+   * @param {Object} auth - Contexto de seguridad del solicitante.
+   * @param {'r'|'w'|'x'} mode - Permiso requerido.
+   * @param {string} what - Descripción de la operación para el mensaje de error.
+   * @returns {void}
+   */
   _assertAccess(node, auth, mode, what) {
     if (!this._canAccess(node, auth, mode)) {
       throw new Error(

@@ -17,6 +17,7 @@ import { PersistenceStore } from '../src/persistence/PersistenceStore.js';
 
 const kernel = new Kernel({ clockIntervalMs: 500, contextSwitchTicks: 1 });
 const security = new SecurityController(kernel);
+assert.equal(security.hasActiveSession(), false, 'La Terminal Web debe nacer bloqueada');
 const memory = new MemoryManager(kernel);
 const fileManager = new FileManager(kernel);
 const io = new DeviceDriver(kernel);
@@ -162,6 +163,34 @@ const guestFormat = kernel.sendIPC({
 });
 assert.equal(guestFormat.status, 'REJECTED', 'GUEST no puede formatear el sistema de archivos');
 assert.ok(Object.isFrozen(security.auditLogs[0]), 'Cada SecurityAuditLog debe ser inmutable');
+
+// Compuerta de la Terminal Web: sólo el botón del panel 2.5 la habilita.
+const panelLogin = kernel.sendIPC({
+  sender: SERVER_ENDPOINTS.KERNEL,
+  receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+  action: SYSCALL_ACTIONS.SYS_AUTH_LOGIN,
+  payload: { username: 'root', password: 'root', source: 'SECURITY_PANEL_LOGIN' }
+});
+assert.equal(panelLogin.status, 'SUCCESS');
+assert.equal(security.hasActiveSession(), true, 'El login del panel 2.5 habilita la terminal');
+
+const topBarLogin = kernel.sendIPC({
+  sender: SERVER_ENDPOINTS.KERNEL,
+  receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+  action: SYSCALL_ACTIONS.SYS_AUTH_LOGIN,
+  payload: { username: 'guest', password: 'guest', source: 'TOP_BAR_SESSION' }
+});
+assert.equal(topBarLogin.status, 'SUCCESS');
+assert.equal(security.hasActiveSession(), false, 'El selector superior no habilita la terminal');
+
+const terminalDenied = kernel.sendIPC({
+  sender: SERVER_ENDPOINTS.KERNEL,
+  receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+  action: 'SEC_TERMINAL_ACCESS_DENIED',
+  payload: { command: 'whoami' }
+});
+assert.equal(terminalDenied.status, 'SUCCESS');
+assert.equal(security.auditLogs[0].eventType, 'TERMINAL_ACCESS_DENIED');
 
 // 6. Verificar correspondencia de todos los IDs de DOM entre index.html y AppController.js
 const html = fs.readFileSync('./index.html', 'utf8');

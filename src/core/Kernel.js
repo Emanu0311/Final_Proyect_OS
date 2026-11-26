@@ -165,6 +165,10 @@ export class Kernel {
     this.ipcBus.registerEndpoint(endpointName, handlerFn);
   }
 
+  /**
+   * Registra el hook del Reference Monitor (SecurityController) en el IPCBus.
+   * @param {(msg: import('./IPCMessage.js').IPCMessage) => {allowed: boolean, reason?: string}} guardFn
+   */
   setSecurityGuard(guardFn) {
     this.securityValidatorFn = guardFn;
   }
@@ -181,6 +185,13 @@ export class Kernel {
 
   /**
    * Envía un mensaje a través del Bus IPC del Microkernel con validación de seguridad ACL.
+   * @param {Object} params
+   * @param {string} params.sender - Endpoint emisor del mensaje.
+   * @param {string} params.receiver - Endpoint receptor registrado en el bus.
+   * @param {string} params.action - Syscall o acción IPC solicitada.
+   * @param {Object} [params.payload] - Argumentos serializables de la operación.
+   * @param {Object|null} [params.authContext] - Contexto del usuario activo; si es null se consulta al SecurityController.
+   * @returns {import('./IPCMessage.js').IPCMessage} Mensaje despachado con estado ACCEPTED/SUCCESS/REJECTED.
    */
   sendIPC({ sender, receiver, action, payload = {}, authContext = null }) {
     const activeAuth = authContext || this._getCurrentAuthContext();
@@ -197,6 +208,10 @@ export class Kernel {
     return dispatched;
   }
 
+  /**
+   * Obtiene el contexto de seguridad de la sesión activa mediante IPC al SECURITY_SERVER.
+   * @returns {{userId: string, username: string, role: string, uid?: number}} Contexto del usuario activo.
+   */
   _getCurrentAuthContext() {
     const secHandler = this.ipcBus.handlers.get(SERVER_ENDPOINTS.SECURITY_SERVER);
     if (secHandler) {

@@ -16,6 +16,14 @@ export class PersistenceStore {
     this._dbPromise = null;
   }
 
+  /**
+   * Serializa el estado del simulador en LocalStorage e IndexedDB (RF-24).
+   * La porción de seguridad incluye `activeUserRole` y los primeros 60 eventos de
+   * `SecurityAuditLog`, segregados del FS simulado para que un formateo no borre la bitácora.
+   * El estado `sessionAuthenticated` NO se persiste: la terminal se bloquea en cada recarga.
+   * @param {Object} servers - Servidores en espacio de usuario a serializar.
+   * @returns {Object} Snapshot generado.
+   */
   saveSnapshot({ processManager, memoryManager, fileManager, deviceDriver, securityController }) {
     const io = deviceDriver.exportState();
     const snapshot = {

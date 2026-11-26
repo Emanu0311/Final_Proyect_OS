@@ -8,7 +8,22 @@
 
 import { SERVER_ENDPOINTS, SYSCALL_ACTIONS } from '../core/IPCMessage.js';
 
+/**
+ * Cuenta de usuario del simulador (catálogo de identidades del Módulo 2.5).
+ * La contraseña se guarda en texto plano únicamente porque es una simulación
+ * académica; en un sistema real se almacenaría sólo un hash SHA-256.
+ */
 export class UserAccount {
+  /**
+   * @param {Object} params
+   * @param {string} params.userId - Identificador estable de la cuenta (usr-root, usr-std, usr-guest).
+   * @param {number} params.uid - UID POSIX simulado (0, 1000, 2000).
+   * @param {string} params.username - Nombre usado en SYS_AUTH_LOGIN y en la terminal CLI.
+   * @param {'ROOT'|'STANDARD'|'GUEST'} params.role - Dominio de seguridad asignado por la ACL.
+   * @param {string} params.password - Credencial de la simulación.
+   * @param {string} params.homeDir - Directorio hogar dentro del FS simulado.
+   * @param {number} params.memoryQuotaKB - Cuota máxima de RAM por proceso del perfil.
+   */
   constructor({ userId, uid, username, role, password, homeDir, memoryQuotaKB }) {
     this.userId = userId;
     this.uid = uid;
@@ -20,7 +35,26 @@ export class UserAccount {
   }
 }
 
+/**
+ * Entrada inmutable de la bitácora forense del Minikernel (RF-30 / RNF-11).
+ * Cada registro se congela con Object.freeze y sellado con un hash FNV-1a
+ * encadenado al registro anterior, de modo que cualquier mutación sea evidente.
+ */
 export class SecurityAuditLog {
+  /**
+   * @param {Object} params
+   * @param {number} params.seq - Número de secuencia monótonamente creciente.
+   * @param {number} params.tick - Tick del reloj maestro en que ocurrió el evento.
+   * @param {string} params.eventType - Código del evento (AUTH_LOGIN_SUCCESS, ACL_RWX_VIOLATION, ...).
+   * @param {'INFO'|'WARNING'|'CRITICAL'} [params.severity] - Severidad forense.
+   * @param {string} params.username - Usuario actor del evento.
+   * @param {string} params.role - Rol activo del actor.
+   * @param {string} params.action - Syscall o acción IPC que disparó el evento.
+   * @param {string} params.targetResource - Recurso protegido involucrado.
+   * @param {'ALLOW'|'DENY'} params.verdict - Veredicto del Reference Monitor.
+   * @param {string} params.details - Descripción legible del evento.
+   * @param {string} [params.prevHash] - Hash de la entrada anterior de la cadena.
+   */
   constructor({
     seq,
     tick,
@@ -50,6 +84,11 @@ export class SecurityAuditLog {
     Object.freeze(this);
   }
 
+  /**
+   * Calcula el hash FNV-1a de 32 bits usado para encadenar la bitácora.
+   * @param {string} input - Datos serializados de la entrada + hash previo.
+   * @returns {string} Hash en hexadecimal de 8 caracteres.
+   */
   static computeHash(input) {
     let h = 0x811c9dc5;
     for (let i = 0; i < input.length; i++) {
@@ -99,6 +138,15 @@ export class SecurityController {
     ];
 
     this.activeUser = this.users[0];
+
+    /**
+     * Compuerta de sesión para la Terminal Web del Módulo 2.5.
+     * El simulador arranca con el perfil root activo para los demás módulos,
+     * pero la CLI permanece bloqueada hasta un SYS_AUTH_LOGIN válido enviado
+     * por el botón "Autenticar" del panel de seguridad (source SECURITY_PANEL_LOGIN).
+     * @type {boolean}
+     */
+    this.sessionAuthenticated = false;
 
     // Matriz de Control de Acceso (ACL) por Rol y Dominio de Recurso
     this.aclMatrix = [
@@ -172,6 +220,11 @@ export class SecurityController {
     this.kernel.setSecurityGuard((msg) => this.validateIPCMessage(msg));
   }
 
+  /**
+   * Punto de entrada del servidor de seguridad en el bus IPC.
+   * @param {import('../core/IPCMessage.js').IPCMessage} msg - Mensaje enrutado por el Kernel.
+   * @returns {Object} Respuesta del servidor (sesión, cuenta autenticada o evento de auditoría).
+   */
   handleIPC(msg) {
     const { action, payload } = msg;
 
@@ -185,7 +238,10 @@ export class SecurityController {
         };
 
       case SYSCALL_ACTIONS.SYS_AUTH_LOGIN:
-        return this.authenticate(payload.username, payload.password);
+        return this.authenticate(payload.username, payload.password, payload.source);
+
+      case 'SEC_TERMINAL_ACCESS_DENIED':
+        return this._recordTerminalAccessDenied(payload.command);
 
       case 'SIMULATE_SECURITY_ATTACK':
         return this.simulateSecurityAttack(payload.attackType);
@@ -207,7 +263,17 @@ export class SecurityController {
     }
   }
 
-  authenticate(username, password = null) {
+  /**
+   * Autentica una identidad y actualiza la sesión activa del Reference Monitor.
+   * La compuerta de la terminal sólo se abre con el origen SECURITY_PANEL_LOGIN;
+   * el selector rápido de la barra superior (TOP_BAR_SESSION) la cierra de nuevo.
+   * @param {string} username - Usuario o rol solicitado.
+   * @param {string|null} [password] - Credencial en texto plano de la simulación.
+   * @param {'SECURITY_PANEL_LOGIN'|'TOP_BAR_SESSION'|'TERMINAL_SU'|'INTERNAL'} [source] - Origen de la solicitud.
+   * @returns {UserAccount} Cuenta activa tras la autenticación.
+   * @throws {Error} Si el usuario no existe o la credencial es inválida.
+   */
+  authenticate(username, password = null, source = 'INTERNAL') {
     const account = this.users.find((u) => u.username === username || u.role === username);
     if (!account) {
       this.recordAudit({
@@ -238,6 +304,15 @@ export class SecurityController {
     }
 
     this.activeUser = account;
+    if (source === 'SECURITY_PANEL_LOGIN') {
+      // Sólo el botón del panel 2.5 habilita la Terminal Web.
+      this.sessionAuthenticated = true;
+    } else if (source === 'TOP_BAR_SESSION') {
+      // El selector rápido cambia el perfil, pero no otorga acceso a la CLI.
+      this.sessionAuthenticated = false;
+    }
+    // TERMINAL_SU e INTERNAL conservan el estado: `su` sólo se alcanza con
+    // la terminal ya desbloqueada y las pruebas directas no alteran la compuerta.
     this.recordAudit({
       eventType: 'AUTH_LOGIN_SUCCESS',
       severity: 'INFO',
@@ -253,7 +328,36 @@ export class SecurityController {
   }
 
   /**
+   * Consulta si la Terminal Web puede ejecutar comandos en la sesión actual.
+   * @returns {boolean} true después de un login válido desde el panel 2.5.
+   */
+  hasActiveSession() {
+    return this.sessionAuthenticated;
+  }
+
+  /**
+   * Registra un intento de uso de la CLI sin autenticación previa.
+   * @param {string} [command] - Comando que se intentó ejecutar.
+   * @returns {SecurityAuditLog} Entrada inmutable agregada a la bitácora.
+   */
+  _recordTerminalAccessDenied(command) {
+    const user = this.activeUser;
+    return this.recordAudit({
+      eventType: 'TERMINAL_ACCESS_DENIED',
+      severity: 'WARNING',
+      username: user.username,
+      role: user.role,
+      action: 'CLI_EXECUTE',
+      targetResource: 'WEB_TERMINAL',
+      verdict: 'DENY',
+      details: `Comando "${command || '-'}" rechazado: la terminal requiere autenticación previa (SYS_AUTH_LOGIN).`
+    });
+  }
+
+  /**
    * Valida cada mensaje IPC contra la Matriz de Control de Acceso (ACL) según el usuario activo.
+   * @param {import('../core/IPCMessage.js').IPCMessage} msg - Mensaje en tránsito en el IPCBus.
+   * @returns {{allowed: boolean, reason?: string}} Veredicto del Reference Monitor.
    */
   validateIPCMessage(msg) {
     // Mensajes internos del propio Kernel (reloj, despertares de IRQ) están pre-autorizados
@@ -396,6 +500,11 @@ export class SecurityController {
     return { allowed: true };
   }
 
+  /**
+   * Dispara un vector de ataque simulado y verifica la contención del Minikernel.
+   * @param {'MEMORY_VIOLATION'|'PRIVILEGE_ESCALATION'|string} attackType - Tipo de amenaza.
+   * @returns {{simulated: string}} Evento simulado registrado en la auditoría.
+   */
   simulateSecurityAttack(attackType) {
     const user = this.activeUser;
     if (attackType === 'MEMORY_VIOLATION') {
@@ -447,6 +556,10 @@ export class SecurityController {
     return { simulated: 'UNAUTHORIZED_FS_ACCESS' };
   }
 
+  /**
+   * Construye un veredicto DENY y deja constancia inmutable del rechazo.
+   * @returns {{allowed: false, reason: string}} Veredicto negativo con la causa.
+   */
   _deny(eventType, severity, username, role, action, targetResource, details) {
     this.recordAudit({
       eventType,
@@ -461,6 +574,11 @@ export class SecurityController {
     return { allowed: false, reason: details };
   }
 
+  /**
+   * Crea y prepend una entrada sellada en SecurityAuditLog (append-only).
+   * @param {Object} event - Datos del evento de seguridad.
+   * @returns {SecurityAuditLog} Entrada congelada y encadenada al hash anterior.
+   */
   recordAudit({ eventType, severity, username, role, action, targetResource, verdict, details }) {
     const prevHash = this.auditLogs.length > 0 ? this.auditLogs[0].hash : '00000000';
     const entry = new SecurityAuditLog({

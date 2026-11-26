@@ -846,6 +846,14 @@ code {
   margin-bottom: 8px;
 }
 
+/* Estado bloqueado de la CLI: AppController deshabilita estos controles mientras
+   SecurityController.sessionAuthenticated === false (panel 2.5). */
+#form-web-terminal input:disabled,
+#form-web-terminal button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Monitor IPC Lateral */
 .ipc-dock-panel {
   background: var(--bg-card);

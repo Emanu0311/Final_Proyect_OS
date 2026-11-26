@@ -593,6 +593,8 @@
       <!-- =====================================================
            MÓDULO 2.5: ADMINISTRACIÓN DE SEGURIDAD
            ===================================================== -->
+      <!-- Panel 2.5: el formulario de autenticación es la única compuerta que habilita
+           la Terminal Web; el selector de sesión de la barra superior sólo cambia el perfil. -->
       <section id="tab-security" class="module-panel" aria-label="Módulo de Administración de Seguridad">
         <div class="grid-2col">
           <div class="card">
@@ -653,8 +655,8 @@
             <pre id="web-terminal-output" class="terminal-output"></pre>
             <form id="form-web-terminal" style="display: flex; gap: 8px;">
               <label for="terminal-cmd-input" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Comando de terminal</label>
-              <input type="text" id="terminal-cmd-input" placeholder="Escribe un comando (ej: help, ps, mem, ls /, cat /etc/kernel.conf, su guest)..." style="flex: 1; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px;" />
-              <button type="submit" class="btn btn-primary">Ejecutar</button>
+              <input type="text" id="terminal-cmd-input" placeholder="Terminal bloqueada: autentícate con &quot;Autenticar (SYS_AUTH_LOGIN)&quot;..." style="flex: 1; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px;" />
+              <button type="submit" id="btn-web-terminal-exec" class="btn btn-primary">Ejecutar</button>
             </form>
           </div>
 

@@ -55,7 +55,7 @@ export class IPCMessage {
    * @param {string} params.action
    * @param {any} params.payload
    * @param {'PENDING'|'ACCEPTED'|'REJECTED'|'SUCCESS'} [params.status]
-   * @param {{userId: string, username?: string, role: 'ROOT'|'STANDARD'|'GUEST'}} [params.authContext]
+   * @param {{userId: string, username?: string, role: 'ROOT'|'STANDARD'|'GUEST', uid?: number}} [params.authContext] - Contexto validado por el SecurityController y adjunto a cada transacción (RF-06/RNF-10).
    */
   constructor({
     id = `IPC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
@@ -197,6 +197,8 @@ export class IPCBus {
   dispatch(message, securityGuard = null) {
     this.messageQueue.push(message);
 
+    // El propio SECURITY_SERVER queda exento del hook para evitar recursión:
+    // es quien emite los veredictos ACL (patrón Reference Monitor desacoplado).
     if (securityGuard && message.receiver !== SERVER_ENDPOINTS.SECURITY_SERVER) {
       const verdict = securityGuard(message);
       if (!verdict.allowed) {

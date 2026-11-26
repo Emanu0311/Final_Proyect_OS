@@ -158,7 +158,8 @@ export class AppController {
           sender: SERVER_ENDPOINTS.KERNEL,
           receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
           action: SYSCALL_ACTIONS.SYS_AUTH_LOGIN,
-          payload: { username, password: pwdMap[username] }
+          // El selector rápido de la barra superior no habilita la Terminal Web.
+          payload: { username, password: pwdMap[username], source: 'TOP_BAR_SESSION' }
         });
         this._persistState();
         this.renderAll();
@@ -616,7 +617,7 @@ export class AppController {
           sender: SERVER_ENDPOINTS.KERNEL,
           receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
           action: SYSCALL_ACTIONS.SYS_AUTH_LOGIN,
-          payload: { username, password }
+          payload: { username, password, source: 'SECURITY_PANEL_LOGIN' }
         });
         this._notifyBanner(
           msg.status === 'SUCCESS'
@@ -658,7 +659,28 @@ export class AppController {
     }
   }
 
+  /**
+   * Ejecuta un comando de la Terminal Web previa validación de sesión (Módulo 2.5).
+   * @param {string} rawLine - Línea escrita por el operador.
+   * @returns {void}
+   */
   executeTerminalCommand(rawLine) {
+    // Compuerta de seguridad: la terminal permanece bloqueada hasta que el
+    // botón "Autenticar" del panel 2.5 complete un SYS_AUTH_LOGIN válido.
+    if (!this.securityController.hasActiveSession()) {
+      this.kernel.sendIPC({
+        sender: SERVER_ENDPOINTS.KERNEL,
+        receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+        action: 'SEC_TERMINAL_ACCESS_DENIED',
+        payload: { command: rawLine }
+      });
+      this.terminalHistory.push(
+        '[DENEGADO] Terminal bloqueada: autentícate con "Autenticar (SYS_AUTH_LOGIN)" en el panel 2.5.'
+      );
+      this.renderAll();
+      return;
+    }
+
     const user = this.securityController.activeUser;
     this.terminalHistory.push(`${user.username}@minikernel:~$ ${rawLine}`);
     const parts = rawLine.split(/\s+/);
@@ -666,7 +688,21 @@ export class AppController {
 
     if (cmd === 'help') {
       this.terminalHistory.push(
-        'Comandos disponibles: ps | mem | ls [ruta] | cat <ruta> | fork <nombre> <kb> | kill <pid> | su <root|std_user|guest> | disk | audit | clear'
+        'Comandos disponibles: whoami | ps | mem | ls [ruta] | cat <ruta> | fork <nombre> <kb> | kill <pid> | su <root|std_user|guest> | disk | audit | clear'
+      );
+    } else if (cmd === 'whoami') {
+      // La identidad se consulta por IPC al Reference Monitor, sin leer directamente su estado.
+      const msg = this.kernel.sendIPC({
+        sender: SERVER_ENDPOINTS.KERNEL,
+        receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+        action: 'GET_ACTIVE_SESSION',
+        payload: {}
+      });
+      const s = msg.response || {};
+      this.terminalHistory.push(
+        msg.status === 'SUCCESS'
+          ? `  ${s.username} (${s.role} | UID:${s.uid} | ${s.userId})`
+          : `  [ERROR] ${msg.errorReason}`
       );
     } else if (cmd === 'ps') {
       for (const pcb of this.processManager.pcbTable.values()) {
@@ -730,7 +766,7 @@ export class AppController {
         sender: SERVER_ENDPOINTS.KERNEL,
         receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
         action: SYSCALL_ACTIONS.SYS_AUTH_LOGIN,
-        payload: { username: targetUser, password: pwdMap[targetUser] || '' }
+        payload: { username: targetUser, password: pwdMap[targetUser] || '', source: 'TERMINAL_SU' }
       });
       this.terminalHistory.push(
         msg.status === 'SUCCESS'
@@ -1373,6 +1409,7 @@ export class AppController {
     }
   }
 
+  /** Renderiza la matriz ACL, la bitácora forense y el estado de la Terminal Web. */
   _renderSecurityPanel() {
     const aclTbody = document.getElementById('acl-matrix-tbody');
     if (aclTbody) {
@@ -1411,9 +1448,22 @@ export class AppController {
         .join('');
     }
 
+    const sessionActive = this.securityController.hasActiveSession();
+    const termInput = document.getElementById('terminal-cmd-input');
+    const termButton = document.getElementById('btn-web-terminal-exec');
+    if (termInput) {
+      termInput.disabled = !sessionActive;
+      termInput.placeholder = sessionActive
+        ? 'Escribe un comando (ej: whoami, help, ps, mem, ls /, cat /etc/kernel.conf, su guest)...'
+        : 'Terminal bloqueada: autentícate con "Autenticar (SYS_AUTH_LOGIN)"...';
+    }
+    if (termButton) termButton.disabled = !sessionActive;
+
     const termOutput = document.getElementById('web-terminal-output');
     if (termOutput) {
-      termOutput.textContent = this.terminalHistory.slice(-18).join('\n');
+      const lines = this.terminalHistory.slice(-18);
+      if (!sessionActive) lines.unshift('[LOCK] Terminal de comandos bloqueada hasta autenticación (panel 2.5).');
+      termOutput.textContent = lines.join('\n');
       termOutput.scrollTop = termOutput.scrollHeight;
     }
   }
