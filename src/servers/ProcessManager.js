@@ -313,8 +313,11 @@ export class ProcessManager {
       case 'IPC_IO_WAKEUP':
         return this.wakeupProcess(payload.pid, payload.details);
 
-      case 'PROC_BLOCK_IO':
+      case 'PROC_BLOCK_IO': {
+        const pcb = this.pcbTable.get(Number(payload.pid));
+        if (!pcb || pcb.state === 'BLOCKED') return null; // ya espera otro evento
         return this.blockProcess(payload.pid, payload.reason || 'Esperando transferencia DMA/Disco');
+      }
 
       case SYSCALL_ACTIONS.SYS_BANKER_REQ:
         return this.banker.requestResources(payload.pid, payload.requestVector);

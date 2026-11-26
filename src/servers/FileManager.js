@@ -473,17 +473,31 @@ export class FileManager {
   // ---------------------------------------------------------------------------
 
   _sendDiskRequest(operation, node) {
+    const blocks = this.getBlockChain(node.path);
+    this._issueBlockIO(operation, node.path, blocks, operation === 'WRITE' ? node.content : '', node.sizeBytes);
+  }
+
+  /** RF-19/RF-20: el FS envía bloques lógicos; el DeviceDriver los traduce a LBA y CHS. */
+  _issueBlockIO(operation, path, blocks, content = '', sizeBytes = null) {
     if (!this.kernel.ipcBus.handlers.has(SERVER_ENDPOINTS.IO_SERVER)) return;
-    this.kernel.sendIPC({
-      sender: SERVER_ENDPOINTS.FS_SERVER,
-      receiver: SERVER_ENDPOINTS.IO_SERVER,
-      action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
-      payload: {
-        operation,
-        lba: node.firstBlock ?? 2, // el FS solo conoce direcciones lógicas de bloque
-        path: node.path,
-        sizeBytes: node.sizeBytes
-      }
+    const bytes = new TextEncoder().encode(content);
+    const totalBytes = sizeBytes ?? bytes.length;
+    blocks.forEach((logicalBlock, i) => {
+      const offset = i * this.blockSizeBytes;
+      const byteCount = Math.max(1, Math.min(this.blockSizeBytes, totalBytes - offset));
+      this.kernel.sendIPC({
+        sender: SERVER_ENDPOINTS.FS_SERVER,
+        receiver: SERVER_ENDPOINTS.IO_SERVER,
+        action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ,
+        payload: {
+          operation,
+          path,
+          logicalBlock,
+          blockSizeBytes: this.blockSizeBytes,
+          byteCount,
+          data: operation === 'WRITE' ? Array.from(bytes.slice(offset, offset + byteCount)) : null
+        }
+      });
     });
   }
 
@@ -738,19 +752,43 @@ export class FileManager {
     if (!state || !Array.isArray(state.nodes) || !Array.isArray(state.fatTable)) {
       return { mounted: false, issues: ['Snapshot de sistema de archivos ausente o incompleto.'] };
     }
-    const issues = this.fsck(state);
+    const blockSizeBytes = Number(state.blockSizeBytes) || 1024;
+    const totalBlocks = Number(state.totalBlocks) || state.fatTable.length;
+    const normalized = {
+      ...state,
+      blockSizeBytes,
+      totalBlocks,
+      // Snapshots previos no guardaban el tamaño del volumen; se infiere del mapa de bloques.
+      totalSizeBytes: Number(state.totalSizeBytes) || totalBlocks * blockSizeBytes,
+      inodeTable: (state.inodeTable || []).map((inode) => {
+        if (Array.isArray(inode.singleIndirectPointers) && Array.isArray(inode.doubleIndirectTable)) return inode;
+        // En el formato anterior los inodos no enumeraban todos los bloques de datos.
+        const dataBlocks = state.fatTable
+          .filter((block) => block.ownerPath === inode.ownerPath && block.status !== 'INDEX')
+          .map((block) => block.blockIndex);
+        return {
+          ...inode,
+          directBlocks: dataBlocks,
+          singleIndirectBlock: null,
+          singleIndirectPointers: [],
+          doubleIndirectBlock: null,
+          doubleIndirectTable: []
+        };
+      })
+    };
+    const issues = this.fsck(normalized);
     if (issues.length > 0) return { mounted: false, issues };
 
-    this.formatType = state.formatType;
-    this.blockSizeBytes = Number(state.blockSizeBytes);
-    this.totalSizeBytes = Number(state.totalSizeBytes);
-    this.totalBlocks = Number(state.totalBlocks);
-    this.nodes = new Map(state.nodes.map((n) => [n.path, new FSNode(n)]));
-    this.fatTable = state.fatTable.map((b) => ({ ...b }));
-    this.inodeTable = (state.inodeTable || []).map((i) => structuredClone(i));
-    this.nextNodeId = Number(state.nextNodeId) || this.nodes.size + 1;
+    this.formatType = normalized.formatType;
+    this.blockSizeBytes = normalized.blockSizeBytes;
+    this.totalSizeBytes = normalized.totalSizeBytes;
+    this.totalBlocks = normalized.totalBlocks;
+    this.nodes = new Map(normalized.nodes.map((n) => [n.path, new FSNode(n)]));
+    this.fatTable = normalized.fatTable.map((b) => ({ ...b }));
+    this.inodeTable = normalized.inodeTable.map((i) => structuredClone(i));
+    this.nextNodeId = Number(normalized.nextNodeId) || this.nodes.size + 1;
     this.nextInodeNumber =
-      Number(state.nextInodeNumber) || Math.max(0, ...this.inodeTable.map((i) => i.inodeNumber)) + 1;
+      Number(normalized.nextInodeNumber) || Math.max(0, ...this.inodeTable.map((i) => i.inodeNumber)) + 1;
     return { mounted: true, issues: [] };
   }
 }

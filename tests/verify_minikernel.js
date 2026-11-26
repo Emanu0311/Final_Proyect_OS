@@ -11,7 +11,7 @@ import { SERVER_ENDPOINTS, SYSCALL_ACTIONS } from '../src/core/IPCMessage.js';
 import { ProcessManager } from '../src/servers/ProcessManager.js';
 import { MemoryManager } from '../src/servers/MemoryManager.js';
 import { FileManager } from '../src/servers/FileManager.js';
-import { DeviceDriver } from '../src/servers/DeviceDriver.js';
+import { DeviceDriver, crc32 } from '../src/servers/DeviceDriver.js';
 import { SecurityController } from '../src/servers/SecurityController.js';
 import { PersistenceStore } from '../src/persistence/PersistenceStore.js';
 
@@ -85,20 +85,72 @@ fileManager.renameNode('/home/test_inode.txt', 'renamed_inode.txt');
 assert.equal(fileManager.readFile('/home/renamed_inode.txt').content, 'Contenido actualizado en inodo');
 fileManager.deleteNode('/home/renamed_inode.txt');
 
-// 4. Verificar Módulo 2.4 (Planificador de Brazo de Disco FCFS, SSTF, SCAN, C-SCAN, DMA y Sockets)
-for (const algo of ['FCFS', 'SSTF', 'SCAN', 'C-SCAN']) {
-  io.updateDiskConfig({ algorithm: algo, headCylinder: 50 });
-  const order = io.computeScheduleOrder([
-    { id: '1', cylinder: 95 },
-    { id: '2', cylinder: 180 },
-    { id: '3', cylinder: 34 }
-  ], 50);
-  assert.equal(order.length, 3);
+// 4. Módulo 2.4: geometría, planificación, DMA con IRQ, sockets y persistencia
+const geo = io.geometry;
+for (const lba of [0, 511, 5120, geo.getTotalSectors() - 1]) {
+  const chs = geo.lbaToCHS(lba);
+  assert.equal(geo.chsToLBA(chs.cylinder, chs.track, chs.sector), lba, 'LBA <-> CHS debe ser biyectivo');
 }
+
+const sample = [{ id: '1', cylinder: 95 }, { id: '2', cylinder: 180 }, { id: '3', cylinder: 34 }];
+const expectedSeek = { FCFS: 276, SSTF: 162, SCAN: 314, 'C-SCAN': 382 };
+for (const algo of Object.keys(expectedSeek)) {
+  io.updateDiskConfig({ algorithm: algo, headCylinder: 50, direction: 'UP' });
+  assert.equal(io.computeScheduleOrder(sample, 50).length, 3);
+  assert.equal(io.computeSchedulePlan(sample, 50, 'UP', algo).totalSeekDistance, expectedSeek[algo], `Seek total ${algo}`);
+}
+
+const ioReq = (payload) =>
+  kernel.sendIPC({ sender: SERVER_ENDPOINTS.KERNEL, receiver: SERVER_ENDPOINTS.IO_SERVER, action: SYSCALL_ACTIONS.SYS_IO_DISK_REQ, payload });
+
+const badReq = ioReq({ cylinder: 999, operation: 'READ' });
+assert.equal(badReq.status, 'REJECTED');
+assert.match(badReq.errorReason, /-EINVAL/);
+assert.ok(kernel.interruptController.irqQueue.some((irq) => irq.irqCode === 'IRQ_DISK_ERROR'));
+
+kernel.sendIPC({ sender: SERVER_ENDPOINTS.KERNEL, receiver: SERVER_ENDPOINTS.IO_SERVER, action: 'EXEC_DISK_BATCH' });
+const ioProc = kernel.sendIPC({
+  sender: SERVER_ENDPOINTS.KERNEL,
+  receiver: SERVER_ENDPOINTS.PROCESS_SERVER,
+  action: SYSCALL_ACTIONS.SYS_FORK,
+  payload: { name: 'io_worker', priority: 5, burstTime: 30, memorySizeKB: 64 }
+}).response;
+const writeReq = ioReq({ cylinder: 10, track: 0, sector: 1, operation: 'WRITE', data: 'DMA_TEST', byteCount: 8, pid: ioProc.pid, blockProcess: true }).response;
+assert.equal(proc.pcbTable.get(ioProc.pid).state, 'BLOCKED');
+for (let t = 0; t < 60 && proc.pcbTable.get(ioProc.pid).state === 'BLOCKED'; t++) kernel.clock.step();
+assert.equal(writeReq.status, 'COMPLETED');
+assert.notEqual(proc.pcbTable.get(ioProc.pid).state, 'BLOCKED', 'IRQ_DMA_DONE debe desbloquear al proceso');
+assert.equal(io.sectorTable.get(writeReq.lba).checksum_crc32, crc32(new TextEncoder().encode('DMA_TEST')));
+
+const faultReq = ioReq({ cylinder: 20, operation: 'READ', pid: 4242 }).response;
+for (let t = 0; t < 30 && faultReq.status !== 'FAILED'; t++) kernel.clock.step();
+assert.equal(faultReq.errorCode, 'DMA_MEM_FAULT');
+kernel.clock.step();
+assert.ok(security.auditLogs.some((l) => l.eventType === 'DMA_MEMORY_VIOLATION'));
+
 const pkt = io.sendNetworkPacket({ sourceSocketId: 'SOCK-01', payload: 'HELLO_MINIKERNEL' });
 assert.equal(pkt.payload, 'HELLO_MINIKERNEL');
 io.flushNetworkBuffers();
 assert.ok(io.sockets[1].rxBuffer.length >= 1);
+assert.equal(io.receivePacket({ socketId: 'SOCK-02' }).payload, 'HELLO_MINIKERNEL');
+
+const longMsg = 'X'.repeat(70);
+assert.equal(io.sendNetworkPacket({ sourceSocketId: 'SOCK-01', payload: longMsg }).fragments, 3);
+for (let i = 0; i < 3; i++) io.flushNetworkBuffers();
+assert.equal(io.receivePacket({ socketId: 'SOCK-02' }).payload, longMsg, 'Reensamblaje por MTU');
+
+const refused = kernel.sendIPC({
+  sender: SERVER_ENDPOINTS.KERNEL,
+  receiver: SERVER_ENDPOINTS.IO_SERVER,
+  action: SYSCALL_ACTIONS.SYS_NET_SEND,
+  payload: { sourceSocketId: 'SOCK-01', destPort: 7777, payload: 'x' }
+});
+assert.match(refused.errorReason, /-ECONNREFUSED/);
+
+const restoredIO = new DeviceDriver(new Kernel());
+assert.ok(restoredIO.restoreState(io.exportState()));
+assert.equal(restoredIO.sectorTable.get(writeReq.lba).checksum_crc32, io.sectorTable.get(writeReq.lba).checksum_crc32);
+assert.equal(restoredIO.diskAlgorithm, io.diskAlgorithm);
 
 // 5. Verificar Módulo 2.5 (Seguridad, Perfiles, ACL y Logs Inmutables)
 security.authenticate('guest', 'guest');

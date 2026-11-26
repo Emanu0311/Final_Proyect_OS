@@ -118,12 +118,36 @@ export class Kernel {
   }
 
   _setupDefaultISRs() {
-    this.interruptController.registerISR('IRQ_DMA_DONE', (irq) => {
+    // Fin de E/S: despierta al proceso (si corresponde) y confirma al IO_SERVER para liberar el canal DMA
+    const ioCompletionISR = (irq) => {
+      if (irq.targetPid !== null && irq.targetPid !== undefined) {
+        this.sendIPC({
+          sender: SERVER_ENDPOINTS.KERNEL,
+          receiver: SERVER_ENDPOINTS.PROCESS_SERVER,
+          action: 'IPC_IO_WAKEUP',
+          payload: { pid: irq.targetPid, irqCode: irq.irqCode, details: irq.description }
+        });
+      }
+      if (irq.data && irq.data.requestId) {
+        this.sendIPC({
+          sender: SERVER_ENDPOINTS.KERNEL,
+          receiver: SERVER_ENDPOINTS.IO_SERVER,
+          action: 'IPC_IO_COMPLETED',
+          payload: { requestId: irq.data.requestId, irqCode: irq.irqCode }
+        });
+      }
+    };
+    for (const code of ['IRQ_DMA_DONE', 'IRQ_NET_RX', 'IRQ_NET_TX_READY']) {
+      this.interruptController.registerISR(code, ioCompletionISR);
+    }
+
+    this.interruptController.registerISR('IRQ_DMA_FAULT', (irq) => {
+      ioCompletionISR(irq);
       this.sendIPC({
         sender: SERVER_ENDPOINTS.KERNEL,
-        receiver: SERVER_ENDPOINTS.PROCESS_SERVER,
-        action: 'IPC_IO_WAKEUP',
-        payload: { pid: irq.targetPid, irqCode: irq.irqCode, details: irq.description }
+        receiver: SERVER_ENDPOINTS.SECURITY_SERVER,
+        action: 'SEC_REPORT_DMA_FAULT',
+        payload: { pid: irq.data?.pid ?? null, requestId: irq.data?.requestId, reason: irq.data?.reason || irq.description }
       });
     });
 

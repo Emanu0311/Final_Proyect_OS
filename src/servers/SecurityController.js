@@ -190,6 +190,18 @@ export class SecurityController {
       case 'SIMULATE_SECURITY_ATTACK':
         return this.simulateSecurityAttack(payload.attackType);
 
+      case 'SEC_REPORT_DMA_FAULT':
+        return this.recordAudit({
+          eventType: 'DMA_MEMORY_VIOLATION',
+          severity: 'CRITICAL',
+          username: this.activeUser.username,
+          role: this.activeUser.role,
+          action: 'IRQ_DMA_FAULT',
+          targetResource: `${payload.requestId || 'DMA'} (P${payload.pid ?? '-'})`,
+          verdict: 'DENY',
+          details: `Transferencia DMA abortada: ${payload.reason}`
+        });
+
       default:
         throw new Error(`Acción desconocida en SECURITY_SERVER: ${action}`);
     }
@@ -363,6 +375,21 @@ export class SecurityController {
         action,
         'DISK_CONTROLLER',
         'Intento no autorizado de perfil GUEST para reprogramar la geometría del controlador de disco.'
+      );
+    }
+
+    if (
+      role === 'GUEST' &&
+      (action === 'EXEC_DISK_BATCH' || (action === SYSCALL_ACTIONS.SYS_IO_DISK_REQ && msg.sender !== SERVER_ENDPOINTS.FS_SERVER))
+    ) {
+      return this._deny(
+        'ACL_IO_VIOLATION',
+        'WARNING',
+        username,
+        role,
+        action,
+        'DISK_CONTROLLER',
+        'Perfil GUEST solo puede consultar el controlador de disco (r--); no puede encolar E/S directa.'
       );
     }
 
